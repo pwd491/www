@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Вход в панель управления</title>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+    <link rel="icon" type="image/png" href="/static/img/favicon.png" />
+    <apple-touch-icon href="/static/img/favicon.png" />
+    <script>
+      (function () {
+        var t = localStorage.getItem("theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <main class="container narrow">
+      <h1>Панель управления</h1>
+      <p class="muted">Вход в панель управления</p>
+      <form id="login-form" class="card">
+        <label>Имя пользователя <input name="username" required /></label>
+        <label>Пароль <input name="password" type="password" required /></label>
+        <button type="submit">Вход</button>
+      </form>
+      <pre id="login-output" class="output"></pre>
+    </main>
+    <script src="/static/js/login.js"></script>
+  </body>
+  </html>

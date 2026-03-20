@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Панель управления</title>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+    <link rel="icon" type="image/png" href="/static/img/favicon.png" />
+    <apple-touch-icon href="/static/img/favicon.png" />
+    <script>
+      (function () {
+        var t = localStorage.getItem("theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+        if (!localStorage.getItem("token")) {
+          location.replace("/login");
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Панель управления</h1>
+      <div class="actions">
+        <button id="theme-toggle">Переключить тему</button>
+        <button id="logout-btn">Выйти</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="card">
+        <h2>Функции</h2>
+        <ul id="feature-list"></ul>
+      </aside>
+
+      <section class="card">
+        <div class="feature-panel-head">
+          <h2 id="feature-title">Выберите функцию</h2>
+          <div id="feature-head-actions"></div>
+        </div>
+        <form id="feature-form"></form>
+        <pre id="result-panel" class="output"></pre>
+      </section>
+    </main>
+
+    <script src="/static/js/app.js"></script>
+  </body>
+  </html>
