@@ -26,11 +26,14 @@ class ZapretAddRequest(BaseModel):
     sites: list[str] = Field(min_length=1)
     scope: Literal["domains", "ipset"] | None = None
 
+
 class ZapretCheckRequest(BaseModel):
     site: str = Field(min_length=1)
 
+
 class DnsBulkKeywordsRequest(BaseModel):
     text: str = Field(min_length=1)
+
 
 class DnsKeywordRequest(BaseModel):
     keyword: str = Field(min_length=1)

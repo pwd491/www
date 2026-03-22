@@ -61,8 +61,8 @@ class WireGuardService:
         raise ValueError("No available IPv6 addresses")
 
     def _random_wireguard_key(self) -> str:
-        """32-byte Curve25519 key material, base64 (WireGuard-compatible)."""
-        return base64.b64encode(os.urandom(32)).decode("ascii").rstrip("=")
+        """32 random bytes as standard base64 with padding (wg-quick / official apps)."""
+        return base64.b64encode(os.urandom(32)).decode("ascii")
 
     def _decode_wg_key_b64(self, raw: str) -> bytes | None:
         s = raw.strip()
