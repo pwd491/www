@@ -9,14 +9,14 @@ from fastapi.staticfiles import StaticFiles
 from .api.auth import router as auth_router
 from .api.features import router as features_router
 from .core.config import settings
-from .services.dns import dns_service
-from .services.wireguard import wireguard_service
+from .services.dns import dns
+from .services.wireguard import wireguard
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    dns_service.sync_adguard_clients_from_home()
-    wireguard_service.import_clients_from_disk()
+    dns.sync_adguard_clients_from_home()
+    wireguard.import_clients_from_disk()
     yield
 
 

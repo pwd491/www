@@ -30,4 +30,4 @@ class AuthService:
             return verify_password(password, row["password_hash"])
 
 
-auth_service = AuthService()
+authenticate = AuthService()

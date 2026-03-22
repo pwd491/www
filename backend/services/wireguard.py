@@ -219,7 +219,7 @@ class WireGuardService:
                     self._sync_wg0_managed_peers()
                     self._try_wg_syncconf()
             except OSError as e:
-                logger.warning("WireGuard: после импорта не обновлён wg0.conf: %s", e)
+                logger.debug("WireGuard: после импорта не обновлён wg0.conf: %s", e)
         if imported or errors:
             logger.debug(
                 "WireGuard импорт с диска: добавлено %s, пропущено %s, ошибок %s",
@@ -715,4 +715,4 @@ class WireGuardService:
         return stats
 
 
-wireguard_service = WireGuardService()
+wireguard = WireGuardService()

@@ -59,7 +59,7 @@ class DnsService:
         """
         yaml_path = settings.adguard_home_yaml_path
         if not yaml_path.is_file():
-            logger.warning(
+            logger.debug(
                 "AdGuard clients sync: YAML не найден: %s (exists=%s)",
                 yaml_path,
                 yaml_path.exists(),
@@ -75,7 +75,7 @@ class DnsService:
         mapping: dict[str, str] = {}
         clients = (data.get("clients") or {}).get("persistent") or []
         if not isinstance(clients, list):
-            logger.warning(
+            logger.debug(
                 "AdGuard clients sync: неожиданный формат clients.persistent (type=%s)",
                 type(clients).__name__,
             )
@@ -95,7 +95,7 @@ class DnsService:
                     mapping[ip.strip()] = name.strip()
 
         if not mapping:
-            logger.warning("AdGuard clients sync: ничего не найдено в YAML")
+            logger.debug("AdGuard clients sync: ничего не найдено в YAML")
             return {"synced": 0, "reason": "no_clients"}
 
         with storage.connection() as conn:
@@ -193,7 +193,7 @@ class DnsService:
         path = settings.adguard_querylog_path.resolve()
 
         if not keywords:
-            logger.warning(
+            logger.debug(
                 "DNS query log: нет ключевых слов в БД, пропуск сканирования"
             )
             return []
@@ -250,7 +250,7 @@ class DnsService:
                     except json.JSONDecodeError as e:
                         json_errors += 1
                         if json_errors <= 3:
-                            logger.warning(
+                            logger.debug(
                                 "DNS query log: JSON ошибка в строке %s: %s",
                                 lines_total,
                                 e,
@@ -301,7 +301,7 @@ class DnsService:
                     len(wrapped),
                 )
                 return wrapped[:limit]
-            logger.warning(
+            logger.debug(
                 "DNS query log: файл непустой (%s байт), но не удалось "
                 "разобрать ни одной JSONL-строки (ошибок JSON: %s)",
                 st.st_size,
@@ -335,7 +335,7 @@ class DnsService:
         max_bytes = 80 * 1024 * 1024
         try:
             if path.stat().st_size > max_bytes:
-                logger.warning(
+                logger.debug(
                     "DNS query log: файл слишком большой для цельного JSON (%s > %s)",
                     path.stat().st_size,
                     max_bytes,
@@ -344,7 +344,7 @@ class DnsService:
             raw = path.read_text(encoding="utf-8")
             data = json.loads(raw)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.warning("DNS query log: цельный JSON не разобран: %s", e)
+            logger.debug("DNS query log: цельный JSON не разобран: %s", e)
             return []
 
         rows: list[dict] = []
@@ -353,7 +353,7 @@ class DnsService:
         elif isinstance(data, list):
             rows = [x for x in data if isinstance(x, dict)]
         else:
-            logger.warning(
+            logger.debug(
                 "DNS query log: неожиданная структура JSON (тип корня: %s)",
                 type(data).__name__,
             )
@@ -368,4 +368,4 @@ class DnsService:
         return entries[:limit]
 
 
-dns_service = DnsService()
+dns = DnsService()

@@ -49,9 +49,6 @@ class Storage:
                 """
             )
             cur.execute(
-                "CREATE TABLE IF NOT EXISTS hashtags (tag TEXT PRIMARY KEY)"
-            )
-            cur.execute(
                 "CREATE TABLE IF NOT EXISTS dns_keywords (keyword TEXT PRIMARY KEY)"
             )
             cur.execute(

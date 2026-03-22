@@ -176,4 +176,4 @@ class ZapretService:
         }
 
 
-zapret_service = ZapretService()
+zapret = ZapretService()
