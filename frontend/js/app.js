@@ -8,6 +8,37 @@ const features = [
   { key: "zapret", title: "Zapret" },
 ];
 
+const WG_PARAMS_KEYS = [
+  "SERVER_PUB_IP",
+  "SERVER_PUB_NIC",
+  "SERVER_WG_NIC",
+  "SERVER_WG_IPV4",
+  "SERVER_WG_IPV6",
+  "SERVER_PORT",
+  "SERVER_PRIV_KEY",
+  "SERVER_PUB_KEY",
+  "CLIENT_DNS_1",
+  "CLIENT_DNS_2",
+  "ALLOWED_IPS",
+];
+
+function wgParamsLabelRu(key) {
+  const labels = {
+    SERVER_PUB_IP: "Публичный IP или DNS (Endpoint)",
+    SERVER_PUB_NIC: "Публичный NIC",
+    SERVER_WG_NIC: "Интерфейс WG",
+    SERVER_WG_IPV4: "IPv4 сети туннеля",
+    SERVER_WG_IPV6: "IPv6 сети туннеля",
+    SERVER_PORT: "Порт UDP",
+    SERVER_PRIV_KEY: "Приватный ключ сервера",
+    SERVER_PUB_KEY: "Публичный ключ сервера (Peer)",
+    CLIENT_DNS_1: "DNS для клиентов (1)",
+    CLIENT_DNS_2: "DNS для клиентов (2)",
+    ALLOWED_IPS: "AllowedIPs (клиенты)",
+  };
+  return labels[key] || key;
+}
+
 const listEl = document.getElementById("feature-list");
 const titleEl = document.getElementById("feature-title");
 const formEl = document.getElementById("feature-form");
@@ -185,6 +216,41 @@ function renderWireGuardPanel() {
   const panel = document.createElement("div");
   panel.className = "wg-panel";
 
+  const paramsSection = document.createElement("section");
+  paramsSection.className = "wg-params-block";
+  const paramsTitle = document.createElement("h3");
+  paramsTitle.className = "panel-section-title";
+  paramsTitle.textContent = "Параметры сервера (params)";
+  const paramsPathHint = document.createElement("p");
+  paramsPathHint.className = "muted wg-params-path";
+  const paramsFieldsWrap = document.createElement("div");
+  paramsFieldsWrap.className = "wg-params-grid";
+  const paramsToolbar = document.createElement("div");
+  paramsToolbar.className = "wg-toolbar";
+  const applyLabel = document.createElement("label");
+  applyLabel.className = "wg-add-field wg-params-apply";
+  const applyCb = document.createElement("input");
+  applyCb.type = "checkbox";
+  applyCb.id = "wg-params-apply-clients";
+  const applySpan = document.createElement("span");
+  applySpan.className = "muted";
+  applySpan.textContent = "Перезаписать все клиентские .conf";
+  applyLabel.append(applyCb, applySpan);
+  const paramsSaveBtn = document.createElement("button");
+  paramsSaveBtn.type = "button";
+  paramsSaveBtn.textContent = "Сохранить params";
+  paramsToolbar.append(applyLabel, paramsSaveBtn);
+  const paramsStatus = document.createElement("p");
+  paramsStatus.className = "wg-status muted";
+  paramsStatus.hidden = true;
+  paramsSection.append(
+    paramsTitle,
+    paramsPathHint,
+    paramsFieldsWrap,
+    paramsToolbar,
+    paramsStatus,
+  );
+
   const status = document.createElement("p");
   status.className = "wg-status muted";
 
@@ -297,9 +363,105 @@ function renderWireGuardPanel() {
     for (const c of sorted) tbody.appendChild(rowForClient(c));
   }
 
-  panel.append(status, wrap, toolbar);
+  panel.append(status, wrap, toolbar, paramsSection);
   wrap.appendChild(table);
   formEl.appendChild(panel);
+
+  async function loadWgParams() {
+    paramsStatus.hidden = true;
+    paramsFieldsWrap.replaceChildren();
+    paramsPathHint.textContent = "Загрузка…";
+    const resp = await fetch("/api/wireguard/params", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      paramsPathHint.textContent = "";
+      paramsStatus.textContent = "Не удалось разобрать ответ сервера";
+      paramsStatus.hidden = false;
+      paramsStatus.classList.add("wg-status-error");
+      return;
+    }
+    if (!resp.ok) {
+      paramsPathHint.textContent = "";
+      paramsStatus.textContent =
+        typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail || body);
+      paramsStatus.hidden = false;
+      paramsStatus.classList.add("wg-status-error");
+      return;
+    }
+    paramsStatus.classList.remove("wg-status-error");
+    paramsPathHint.textContent = `${body.path}${body.exists ? "" : " (файл ещё не создан)"}`;
+    const vals = body.params || {};
+    for (const key of WG_PARAMS_KEYS) {
+      const label = document.createElement("label");
+      label.className = "wg-param-field";
+      const span = document.createElement("span");
+      span.className = "muted";
+      span.textContent = wgParamsLabelRu(key);
+      const isLong =
+        key.includes("KEY") || key === "ALLOWED_IPS" || key.includes("IPV");
+      const input = isLong
+        ? document.createElement("textarea")
+        : document.createElement("input");
+      if (input.tagName === "INPUT") input.type = "text";
+      if (input.tagName === "TEXTAREA") input.rows = 2;
+      input.dataset.paramKey = key;
+      input.value = vals[key] ?? "";
+      input.autocomplete = "off";
+      label.append(span, input);
+      paramsFieldsWrap.appendChild(label);
+    }
+  }
+
+  paramsSaveBtn.onclick = async () => {
+    paramsStatus.hidden = true;
+    const payload = {};
+    paramsFieldsWrap.querySelectorAll("[data-param-key]").forEach((el) => {
+      payload[el.dataset.paramKey] = el.value;
+    });
+    const resp = await fetch("/api/wireguard/params", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        params: payload,
+        apply_to_clients: applyCb.checked,
+      }),
+    });
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      paramsStatus.textContent = "Не удалось разобрать ответ сервера";
+      paramsStatus.hidden = false;
+      paramsStatus.classList.add("wg-status-error");
+      return;
+    }
+    if (!resp.ok) {
+      paramsStatus.textContent =
+        typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail || body);
+      paramsStatus.hidden = false;
+      paramsStatus.classList.add("wg-status-error");
+      return;
+    }
+    paramsStatus.classList.remove("wg-status-error");
+    let msg = "Сохранено.";
+    if (body.clients_updated != null) {
+      msg += ` Обновлено клиентских конфигов: ${body.clients_updated}.`;
+    }
+    paramsStatus.textContent = msg;
+    paramsStatus.hidden = false;
+    applyCb.checked = false;
+  };
 
   function setStatus(text, isError) {
     if (!text) {
@@ -549,6 +711,7 @@ function renderWireGuardPanel() {
   WG_MOBILE_MQ.addEventListener("change", onWgLayout);
   wgLayoutMqlCleanup = () => WG_MOBILE_MQ.removeEventListener("change", onWgLayout);
 
+  loadWgParams();
   loadClients();
 }
 

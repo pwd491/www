@@ -318,6 +318,54 @@ a.wg-client-download-link:active {
   color: var(--muted);
 }
 
+.wg-params-block {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.wg-params-block .panel-section-title {
+  margin-top: 0;
+}
+
+.wg-params-path {
+  font-size: 0.88rem;
+  margin: 0 0 0.75rem;
+  word-break: break-all;
+}
+
+.wg-params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.wg-param-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.wg-param-field input,
+.wg-param-field textarea {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.wg-params-apply {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .zapret-row {
   display: grid;
   grid-template-columns: minmax(200px, 1fr) 2fr;

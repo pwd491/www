@@ -1,4 +1,5 @@
 import base64
+import ipaddress
 import logging
 import os
 import re
@@ -18,6 +19,20 @@ class WireGuardService:
     name_re = re.compile(r"^[a-zA-Z0-9_-]{1,15}$")
     _WG_MANAGED_BEGIN = "### WEBPANEL-MANAGED-PEERS-BEGIN\n"
     _WG_MANAGED_END = "### WEBPANEL-MANAGED-PEERS-END\n"
+
+    _PARAMS_KEY_ORDER: tuple[str, ...] = (
+        "SERVER_PUB_IP",
+        "SERVER_PUB_NIC",
+        "SERVER_WG_NIC",
+        "SERVER_WG_IPV4",
+        "SERVER_WG_IPV6",
+        "SERVER_PORT",
+        "SERVER_PRIV_KEY",
+        "SERVER_PUB_KEY",
+        "CLIENT_DNS_1",
+        "CLIENT_DNS_2",
+        "ALLOWED_IPS",
+    )
 
     def _is_valid_name(self, name: str) -> bool:
         return bool(self.name_re.match(name))
@@ -291,6 +306,170 @@ class WireGuardService:
             return None
         return self._pubkey_from_private(priv)
 
+    def _params_path(self) -> Path:
+        return settings.wireguard_params_path
+
+    def read_params(self) -> dict[str, str]:
+        path = self._params_path()
+        if not path.is_file():
+            return {}
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return {}
+        out: dict[str, str] = {}
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if "=" not in s:
+                continue
+            k, v = s.split("=", 1)
+            out[k.strip()] = v.strip()
+        return out
+
+    def _serialize_params(self, data: dict[str, str]) -> str:
+        lines: list[str] = []
+        seen: set[str] = set()
+        for k in self._PARAMS_KEY_ORDER:
+            if k in data:
+                lines.append(f"{k}={data[k]}")
+                seen.add(k)
+        for k in sorted(data.keys()):
+            if k not in seen:
+                lines.append(f"{k}={data[k]}")
+        return "\n".join(lines) + ("\n" if lines else "")
+
+    def write_params_file(self, data: dict[str, str]) -> None:
+        path = self._params_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        raw = self._serialize_params(data)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(raw, encoding="utf-8")
+        tmp.replace(path)
+
+    def get_params_document(self) -> dict:
+        path = self._params_path()
+        exists = path.is_file()
+        params = self.read_params()
+        merged: dict[str, str] = {k: params.get(k, "") for k in self._PARAMS_KEY_ORDER}
+        for k, v in params.items():
+            if k not in merged:
+                merged[k] = v
+        return {
+            "path": str(path),
+            "exists": exists,
+            "params": merged,
+        }
+
+    def save_params(
+        self, incoming: dict[str, str], apply_to_clients: bool = False
+    ) -> dict:
+        current = self.read_params()
+        merged = {**current, **incoming}
+        self.write_params_file(merged)
+        out: dict = {"saved": True, "path": str(self._params_path())}
+        if apply_to_clients:
+            out["clients_updated"] = self.rewrite_all_client_configs()
+        return out
+
+    def _format_endpoint(self, host: str, port: str) -> str | None:
+        host = (host or "").strip()
+        port = (port or "").strip()
+        if not host or not port:
+            return None
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.version == 6:
+                return f"[{host}]:{port}"
+        except ValueError:
+            pass
+        return f"{host}:{port}"
+
+    def _endpoint_from_params(self, params: dict[str, str]) -> str | None:
+        return self._format_endpoint(
+            params.get("SERVER_PUB_IP", ""),
+            params.get("SERVER_PORT", ""),
+        )
+
+    def _peer_public_key_for_client(self, params: dict[str, str]) -> str | None:
+        pk = (params.get("SERVER_PUB_KEY") or "").strip()
+        if pk:
+            return pk
+        return self._server_public_key()
+
+    def _allowed_ips_from_params(self, params: dict[str, str]) -> str:
+        s = (params.get("ALLOWED_IPS") or "").strip()
+        return s if s else "0.0.0.0/0,::/0"
+
+    def _build_client_config_text(
+        self,
+        *,
+        private_key: str,
+        ipv4: str,
+        ipv6: str,
+        preshared_key: str,
+        peer_public_key: str,
+        endpoint: str,
+        params: dict[str, str],
+    ) -> str:
+        dns1 = (params.get("CLIENT_DNS_1") or "").strip()
+        dns2 = (params.get("CLIENT_DNS_2") or "").strip()
+        dns_parts: list[str] = []
+        for d in (dns1, dns2):
+            if d and d not in dns_parts:
+                dns_parts.append(d)
+        allowed_ips = self._allowed_ips_from_params(params)
+        lines = [
+            "[Interface]",
+            f"PrivateKey = {private_key}",
+            f"Address = {ipv4}/32,{ipv6}/128",
+        ]
+        if dns_parts:
+            lines.append(f"DNS = {', '.join(dns_parts)}")
+        lines.extend(
+            [
+                "",
+                "[Peer]",
+                f"PublicKey = {peer_public_key}",
+                f"PresharedKey = {preshared_key}",
+                f"Endpoint = {endpoint}",
+                f"AllowedIPs = {allowed_ips}",
+                "",
+            ]
+        )
+        return "\n".join(lines)
+
+    def rewrite_all_client_configs(self) -> int:
+        params = self.read_params()
+        endpoint = self._endpoint_from_params(params)
+        peer_pub = self._peer_public_key_for_client(params)
+        if not endpoint or not peer_pub:
+            raise ValueError(
+                "Не заданы endpoint (SERVER_PUB_IP, SERVER_PORT) "
+                "или публичный ключ сервера (SERVER_PUB_KEY или PrivateKey в wg0.conf)"
+            )
+        with storage.connection() as conn:
+            rows = conn.execute(
+                "SELECT ipv4, ipv6, private_key, preshared_key, config_file "
+                "FROM wireguard_clients ORDER BY name ASC"
+            ).fetchall()
+        n = 0
+        for row in rows:
+            cfg = Path(row["config_file"])
+            text = self._build_client_config_text(
+                private_key=row["private_key"],
+                ipv4=row["ipv4"],
+                ipv6=row["ipv6"],
+                preshared_key=row["preshared_key"],
+                peer_public_key=peer_pub,
+                endpoint=endpoint,
+                params=params,
+            )
+            cfg.write_text(text, encoding="utf-8")
+            n += 1
+        return n
+
     def _clients_for_server_sync(self) -> list[dict]:
         with storage.connection() as conn:
             rows = conn.execute(
@@ -386,24 +565,30 @@ class WireGuardService:
                 "Не удалось получить публичный ключ клиента (wg/cryptography)"
             )
         preshared_key = self._random_wireguard_key()
-        server_pub = self._server_public_key()
-        if not server_pub:
+        params = self.read_params()
+        peer_pub = self._peer_public_key_for_client(params)
+        endpoint = self._endpoint_from_params(params)
+        if not endpoint:
             raise ValueError(
-                "Не удалось получить публичный ключ сервера: проверьте "
-                f"[Interface] PrivateKey в {self._server_conf_path()}"
+                "Укажите SERVER_PUB_IP и SERVER_PORT в "
+                f"{self._params_path()} (или создайте файл через панель)"
+            )
+        if not peer_pub:
+            raise ValueError(
+                "Укажите SERVER_PUB_KEY в params или PrivateKey в [Interface] в "
+                f"{self._server_conf_path()}"
             )
         clients_dir = settings.wireguard_dir / "clients"
         clients_dir.mkdir(parents=True, exist_ok=True)
         config_file = clients_dir / f"{settings.wireguard_iface}-client-{name}.conf"
-        config_text = (
-            "[Interface]\n"
-            f"PrivateKey = {private_key}\n"
-            f"Address = {ipv4}/32,{ipv6}/128\n\n"
-            "[Peer]\n"
-            f"PublicKey = {server_pub}\n"
-            f"PresharedKey = {preshared_key}\n"
-            "Endpoint = SERVER_ENDPOINT_PLACEHOLDER\n"
-            "AllowedIPs = 0.0.0.0/0,::/0\n"
+        config_text = self._build_client_config_text(
+            private_key=private_key,
+            ipv4=ipv4,
+            ipv6=ipv6,
+            preshared_key=preshared_key,
+            peer_public_key=peer_pub,
+            endpoint=endpoint,
+            params=params,
         )
         config_file.write_text(config_text, encoding="utf-8")
         try:

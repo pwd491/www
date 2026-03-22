@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     wireguard_dir: Path = Path("/etc/wireguard")
     wireguard_iface: str = "wg0"
+    wireguard_params_path: Path = Path("/etc/wireguard/params")
     adguard_querylog_path: Path = Path("/opt/AdGuardHome/data/querylog.json")
     adguard_home_yaml_path: Path = Path("/opt/AdGuardHome/AdGuardHome.yaml")
     zapret_domains_dir: Path = Path("/etc/zapret/domains")

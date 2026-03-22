@@ -5,6 +5,7 @@ from ..models.features import (
     DnsBulkKeywordsRequest,
     DnsKeywordRequest,
     WgAddRequest,
+    WgParamsPutRequest,
     WgRenameRequest,
     ZapretAddRequest,
     ZapretCheckRequest,
@@ -52,6 +53,18 @@ def wg_rename(payload: WgRenameRequest) -> dict:
 @router.get("/wireguard/clients")
 def wg_list() -> dict:
     return {"clients": wireguard_service.list_clients_with_activity()}
+
+
+@router.get("/wireguard/params")
+def wg_params_get() -> dict:
+    return wireguard_service.get_params_document()
+
+
+@router.put("/wireguard/params")
+def wg_params_put(payload: WgParamsPutRequest) -> dict:
+    return wireguard_service.save_params(
+        payload.params, apply_to_clients=payload.apply_to_clients
+    )
 
 
 @router.get("/wireguard/clients/{client_name}/config")
