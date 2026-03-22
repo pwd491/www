@@ -11,6 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 class DnsService:
+    _QUERYLOG_GLOB = "querylog.json*"
+
+    def _find_querylog_files(self) -> list[Path]:
+        """All querylog files in adguard_data_dir (querylog.json, querylog.json.1, …), newest first."""
+        base = settings.adguard_data_dir
+        if not base.is_dir():
+            return []
+        files = [p for p in base.glob(self._QUERYLOG_GLOB) if p.is_file()]
+        files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return files
+
     def list_keywords(self) -> list[str]:
         with storage.connection() as conn:
             rows = conn.execute(
@@ -190,7 +201,7 @@ class DnsService:
 
     def find_queries_by_keywords(self, limit: int = 200) -> list[dict]:
         keywords = self.list_keywords()
-        path = settings.adguard_querylog_path.resolve()
+        paths = self._find_querylog_files()
 
         if not keywords:
             logger.debug(
@@ -198,37 +209,22 @@ class DnsService:
             )
             return []
 
-        if path.is_dir():
+        if not paths:
             logger.error(
-                "DNS query log: путь указывает на каталог, а не файл: %s",
-                path,
+                "DNS query log: не найдены файлы %s в %s",
+                self._QUERYLOG_GLOB,
+                settings.adguard_data_dir,
             )
-            return []
-
-        if not path.is_file():
-            logger.error(
-                "DNS query log: файл не найден или недоступен: %s (exists=%s)",
-                path,
-                path.exists(),
-            )
-            return []
-
-        try:
-            st = path.stat()
-        except OSError as e:
-            logger.error("DNS query log: stat не удался для %s: %s", path, e)
             return []
 
         logger.debug(
-            "DNS query log: сканирование %s (размер %s байт, ключевых слов: %s)",
-            path,
-            st.st_size,
+            "DNS query log: сканирование %s файл(ов), ключевых слов: %s",
+            len(paths),
             len(keywords),
         )
 
         client_names = self._load_adguard_client_names()
         if not client_names:
-            # На случай, если таблица пустая после первичного запуска.
             self.sync_adguard_clients_from_home()
             client_names = self._load_adguard_client_names()
 
@@ -238,48 +234,58 @@ class DnsService:
         empty_domain = 0
         matched = 0
         sample_keys: list[str] | None = None
+        first_file_stats: int | None = None
 
-        try:
-            with path.open("r", encoding="utf-8") as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    lines_total += 1
-                    try:
-                        parsed = json.loads(line)
-                    except json.JSONDecodeError as e:
-                        json_errors += 1
-                        if json_errors <= 3:
-                            logger.debug(
-                                "DNS query log: JSON ошибка в строке %s: %s",
-                                lines_total,
-                                e,
-                            )
-                        continue
-                    if isinstance(parsed, list):
-                        iter_rows = [x for x in parsed if isinstance(x, dict)]
-                    elif isinstance(parsed, dict) and isinstance(
-                        parsed.get("data"), list
-                    ):
-                        iter_rows = [x for x in parsed["data"] if isinstance(x, dict)]
-                    elif isinstance(parsed, dict):
-                        iter_rows = [parsed]
-                    else:
-                        continue
-                    for row in iter_rows:
-                        if sample_keys is None and row:
-                            sample_keys = list(row.keys())[:25]
-                        dom = self._domain_from_log_row(row)
-                        if not dom:
-                            empty_domain += 1
+        for path in paths:
+            try:
+                st = path.stat()
+                if first_file_stats is None:
+                    first_file_stats = st.st_size
+            except OSError as e:
+                logger.debug("DNS query log: пропуск %s (%s)", path, e)
+                continue
+
+            try:
+                with path.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        if not line.strip():
                             continue
-                        if self._append_matching_entries(
-                            row, keywords, entries, client_names
+                        lines_total += 1
+                        try:
+                            parsed = json.loads(line)
+                        except json.JSONDecodeError as e:
+                            json_errors += 1
+                            if json_errors <= 3:
+                                logger.debug(
+                                    "DNS query log: JSON ошибка в строке %s: %s",
+                                    lines_total,
+                                    e,
+                                )
+                            continue
+                        if isinstance(parsed, list):
+                            iter_rows = [x for x in parsed if isinstance(x, dict)]
+                        elif isinstance(parsed, dict) and isinstance(
+                            parsed.get("data"), list
                         ):
-                            matched += 1
-        except OSError as e:
-            logger.error("DNS query log: чтение файла %s: %s", path, e)
-            return []
+                            iter_rows = [x for x in parsed["data"] if isinstance(x, dict)]
+                        elif isinstance(parsed, dict):
+                            iter_rows = [parsed]
+                        else:
+                            continue
+                        for row in iter_rows:
+                            if sample_keys is None and row:
+                                sample_keys = list(row.keys())[:25]
+                            dom = self._domain_from_log_row(row)
+                            if not dom:
+                                empty_domain += 1
+                                continue
+                            if self._append_matching_entries(
+                                row, keywords, entries, client_names
+                            ):
+                                matched += 1
+            except OSError as e:
+                logger.error("DNS query log: чтение файла %s: %s", path, e)
+                return []
 
         if matched == 0 and lines_total > 0:
             logger.debug(
@@ -290,9 +296,9 @@ class DnsService:
                 json_errors,
             )
 
-        if matched == 0 and lines_total == 0 and st.st_size > 0:
+        if matched == 0 and lines_total == 0 and first_file_stats and first_file_stats > 0:
             wrapped = self._try_load_wrapped_querylog(
-                path, keywords, limit, client_names
+                paths[0], keywords, limit, client_names
             )
             if wrapped:
                 logger.debug(
@@ -302,9 +308,9 @@ class DnsService:
                 )
                 return wrapped[:limit]
             logger.debug(
-                "DNS query log: файл непустой (%s байт), но не удалось "
+                "DNS query log: файлы непустые (%s байт в первом), но не удалось "
                 "разобрать ни одной JSONL-строки (ошибок JSON: %s)",
-                st.st_size,
+                first_file_stats,
                 json_errors,
             )
 
