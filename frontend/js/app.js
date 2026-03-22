@@ -312,12 +312,63 @@ function renderWireGuardPanel() {
     status.classList.toggle("wg-status-error", Boolean(isError));
   }
 
+  async function downloadWgConfig(clientName) {
+    setStatus("");
+    const resp = await fetch(
+      `/api/wireguard/clients/${encodeURIComponent(clientName)}/config`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      setStatus("Не удалось разобрать ответ сервера", true);
+      return;
+    }
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail || body),
+        true,
+      );
+      return;
+    }
+    const cfg = body.config;
+    if (typeof cfg !== "string") {
+      setStatus("Неожиданный формат конфига", true);
+      return;
+    }
+    const blob = new Blob([cfg], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `wg-${clientName}.conf`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function rowForClient(c) {
     const tr = document.createElement("tr");
     const tdName = document.createElement("td");
-    const nameCode = document.createElement("code");
-    nameCode.textContent = c.name;
-    tdName.appendChild(nameCode);
+    if (wgIsMobileLayout()) {
+      const nameLink = document.createElement("a");
+      nameLink.href = "#";
+      nameLink.className = "wg-client-download-link";
+      nameLink.dataset.action = "download";
+      nameLink.dataset.name = c.name;
+      nameLink.textContent = c.name;
+      nameLink.title = "Скачать конфиг";
+      nameLink.setAttribute("aria-label", `Скачать конфиг: ${c.name}`);
+      tdName.appendChild(nameLink);
+    } else {
+      const nameCode = document.createElement("code");
+      nameCode.textContent = c.name;
+      tdName.appendChild(nameCode);
+    }
 
     const tdIp = document.createElement("td");
     const ipCode = document.createElement("code");
@@ -355,6 +406,7 @@ function renderWireGuardPanel() {
         return b;
       };
       tdAct.append(
+        mk("Скачать конфиг", "btn-secondary", "download"),
         mk("Переименовать", "btn-secondary", "rename"),
         mk("Удалить", "btn-danger", "delete"),
       );
@@ -427,12 +479,18 @@ function renderWireGuardPanel() {
   };
 
   tbody.addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-action]");
-    if (!btn) return;
-    const clientName = btn.dataset.name;
+    const ctrl = e.target.closest("button[data-action], a[data-action]");
+    if (!ctrl) return;
+    if (ctrl.tagName === "A") e.preventDefault();
+    const clientName = ctrl.dataset.name;
     if (!clientName) return;
 
-    if (btn.dataset.action === "delete") {
+    if (ctrl.dataset.action === "download") {
+      await downloadWgConfig(clientName);
+      return;
+    }
+
+    if (ctrl.dataset.action === "delete") {
       if (!confirm(`Удалить клиента «${clientName}»?`)) return;
       setStatus("");
       const resp = await fetch(
@@ -451,7 +509,7 @@ function renderWireGuardPanel() {
       return;
     }
 
-    if (btn.dataset.action === "rename") {
+    if (ctrl.dataset.action === "rename") {
       const newName = prompt("Новое имя клиента:", clientName);
       if (newName == null) return;
       const trimmed = String(newName).trim();
