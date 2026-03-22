@@ -2,7 +2,6 @@ const token = localStorage.getItem("token");
 if (!token) window.location.href = "/login";
 
 const features = [
-  // { key: "help", title: "Помощь", method: "GET", path: "/api/help", fields: [] },
   { key: "wireguard", title: "WireGuard" },
   { key: "dns", title: "DNS" },
   { key: "zapret", title: "Zapret" },
