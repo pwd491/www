@@ -130,10 +130,12 @@ function formatRelativeTimeRu(input) {
   if (!Number.isFinite(ms)) return "";
   const sec = Math.floor((Date.now() - ms) / 1000);
   if (sec < 0) return "только что";
-  if (sec < 45) return "только что";
+  if (sec === 0) return "только что";
+  if (sec < 60) {
+    return `${sec} ${ruUnit(sec, "секунду", "секунды", "секунд")} назад`;
+  }
 
   const min = Math.floor(sec / 60);
-  if (min < 1) return "меньше минуты назад";
   if (min < 60) {
     return `${min} ${ruUnit(min, "минуту", "минуты", "минут")} назад`;
   }
