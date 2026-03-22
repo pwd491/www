@@ -270,6 +270,27 @@ class WireGuardService:
     def _server_conf_path(self) -> Path:
         return settings.wireguard_dir / f"{settings.wireguard_iface}.conf"
 
+    def _read_server_interface_private_key(self) -> str | None:
+        path = self._server_conf_path()
+        if not path.is_file():
+            return None
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        m = re.search(
+            r"^\s*PrivateKey\s*=\s*(\S+)\s*$",
+            text,
+            re.MULTILINE | re.IGNORECASE,
+        )
+        return m.group(1).strip() if m else None
+
+    def _server_public_key(self) -> str | None:
+        priv = self._read_server_interface_private_key()
+        if not priv:
+            return None
+        return self._pubkey_from_private(priv)
+
     def _clients_for_server_sync(self) -> list[dict]:
         with storage.connection() as conn:
             rows = conn.execute(
@@ -365,6 +386,12 @@ class WireGuardService:
                 "Не удалось получить публичный ключ клиента (wg/cryptography)"
             )
         preshared_key = self._random_wireguard_key()
+        server_pub = self._server_public_key()
+        if not server_pub:
+            raise ValueError(
+                "Не удалось получить публичный ключ сервера: проверьте "
+                f"[Interface] PrivateKey в {self._server_conf_path()}"
+            )
         clients_dir = settings.wireguard_dir / "clients"
         clients_dir.mkdir(parents=True, exist_ok=True)
         config_file = clients_dir / f"{settings.wireguard_iface}-client-{name}.conf"
@@ -373,7 +400,7 @@ class WireGuardService:
             f"PrivateKey = {private_key}\n"
             f"Address = {ipv4}/32,{ipv6}/128\n\n"
             "[Peer]\n"
-            "PublicKey = SERVER_PUBLIC_KEY_PLACEHOLDER\n"
+            f"PublicKey = {server_pub}\n"
             f"PresharedKey = {preshared_key}\n"
             "Endpoint = SERVER_ENDPOINT_PLACEHOLDER\n"
             "AllowedIPs = 0.0.0.0/0,::/0\n"
