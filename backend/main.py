@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,22 +13,8 @@ from .services.dns import dns_service
 from .services.wireguard import wireguard_service
 
 
-def _ensure_backend_logging() -> None:
-    log = logging.getLogger("backend")
-    if log.handlers:
-        return
-    handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter("%(levelname)s %(name)s: %(message)s"),
-    )
-    log.addHandler(handler)
-    log.setLevel(logging.INFO)
-    log.propagate = False
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    _ensure_backend_logging()
     dns_service.sync_adguard_clients_from_home()
     wireguard_service.import_clients_from_disk()
     yield
