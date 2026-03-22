@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -6,6 +7,7 @@ from ..core.config import settings
 
 class ZapretService:
     _alias_map = {"hosts": "zapret-hosts-user", "exclude": "zapret-hosts-user-exclude"}
+    _list_name_re = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 
     def _normalize_domain(self, raw: str) -> str | None:
         s = (raw or "").strip().lower()
@@ -16,6 +18,10 @@ class ZapretService:
 
     def _effective_stem(self, list_name: str) -> str:
         key = list_name.strip().lower()
+        if ".." in key or "/" in key or "\\" in key:
+            raise ValueError("Недопустимое имя списка")
+        if not self._list_name_re.match(key):
+            raise ValueError("Недопустимое имя списка")
         return self._alias_map.get(key, key)
 
     def _resolve_file(self, list_name: str) -> Path:

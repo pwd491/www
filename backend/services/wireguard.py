@@ -45,8 +45,9 @@ class WireGuardService:
                 return f"fd42:42:42::{n}"
         raise ValueError("No available IPv6 addresses")
 
-    def _fake_key(self) -> str:
-        return base64.urlsafe_b64encode(os.urandom(24)).decode()
+    def _random_wireguard_key(self) -> str:
+        """32-byte Curve25519 key material, base64 (WireGuard-compatible)."""
+        return base64.b64encode(os.urandom(32)).decode("ascii").rstrip("=")
 
     def _decode_wg_key_b64(self, raw: str) -> bytes | None:
         s = raw.strip()
@@ -357,9 +358,13 @@ class WireGuardService:
                 raise ValueError(f"Client '{name}' already exists")
         ipv4 = self._next_ipv4()
         ipv6 = self._next_ipv6()
-        private_key = self._fake_key()
-        public_key = self._fake_key()
-        preshared_key = self._fake_key()
+        private_key = self._random_wireguard_key()
+        public_key = self._pubkey_from_private(private_key)
+        if not public_key:
+            raise ValueError(
+                "Не удалось получить публичный ключ клиента (wg/cryptography)"
+            )
+        preshared_key = self._random_wireguard_key()
         clients_dir = settings.wireguard_dir / "clients"
         clients_dir.mkdir(parents=True, exist_ok=True)
         config_file = clients_dir / f"{settings.wireguard_iface}-client-{name}.conf"
@@ -407,6 +412,8 @@ class WireGuardService:
         }
 
     def remove_client(self, name: str) -> bool:
+        if not self._is_valid_name(name):
+            raise ValueError("Недопустимое имя клиента")
         with storage.connection() as conn:
             row = conn.execute(
                 "SELECT config_file FROM wireguard_clients WHERE name = ?", (name,)
@@ -469,6 +476,8 @@ class WireGuardService:
         return {"success": True, "message": f"Renamed '{old_name}' to '{new_name}'"}
 
     def get_config(self, name: str) -> str | None:
+        if not self._is_valid_name(name):
+            raise ValueError("Недопустимое имя клиента")
         with storage.connection() as conn:
             row = conn.execute(
                 "SELECT config_file FROM wireguard_clients WHERE name = ?", (name,)

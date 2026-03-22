@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth.dependencies import get_current_user
 from ..models.features import (
@@ -109,6 +109,6 @@ def dns_delete_keyword(payload: DnsKeywordRequest) -> dict:
 
 
 @router.get("/dns/queries")
-def dns_queries(limit: int = 200) -> dict:
+def dns_queries(limit: int = Query(200, ge=1, le=5000)) -> dict:
     return {"entries": dns_service.find_queries_by_keywords(limit=limit)}
 

@@ -1,10 +1,12 @@
 from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "Dashboard Web Console"
+    cors_origins: list[str] = Field(default_factory=list)
     jwt_secret_key: str = Field("change-me-in-env", min_length=12)
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 5_256_000
