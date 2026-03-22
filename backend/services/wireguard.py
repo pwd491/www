@@ -221,7 +221,7 @@ class WireGuardService:
             except OSError as e:
                 logger.warning("WireGuard: после импорта не обновлён wg0.conf: %s", e)
         if imported or errors:
-            logger.info(
+            logger.debug(
                 "WireGuard импорт с диска: добавлено %s, пропущено %s, ошибок %s",
                 len(imported),
                 len(skipped),

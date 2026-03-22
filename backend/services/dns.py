@@ -219,7 +219,7 @@ class DnsService:
             logger.error("DNS query log: stat не удался для %s: %s", path, e)
             return []
 
-        logger.info(
+        logger.debug(
             "DNS query log: сканирование %s (размер %s байт, ключевых слов: %s)",
             path,
             st.st_size,
@@ -282,13 +282,12 @@ class DnsService:
             return []
 
         if matched == 0 and lines_total > 0:
-            logger.warning(
+            logger.debug(
                 "DNS query log: прочитано строк JSONL=%s, совпадений=0, "
-                "пустой домен=%s, ошибок JSON=%s; пример ключей первой записи: %s",
+                "пустой домен=%s, ошибок JSON=%s",
                 lines_total,
                 empty_domain,
                 json_errors,
-                sample_keys,
             )
 
         if matched == 0 and lines_total == 0 and st.st_size > 0:
@@ -296,7 +295,7 @@ class DnsService:
                 path, keywords, limit, client_names
             )
             if wrapped:
-                logger.info(
+                logger.debug(
                     "DNS query log: использован формат единого JSON (не JSONL), "
                     "записей после фильтра: %s",
                     len(wrapped),
@@ -312,13 +311,13 @@ class DnsService:
         entries.reverse()
         out = entries[:limit]
         if out:
-            logger.info(
+            logger.debug(
                 "DNS query log: отдано записей=%s (всего совпадений при скане=%s)",
                 len(out),
                 matched,
             )
         else:
-            logger.info(
+            logger.debug(
                 "DNS query log: после фильтра пусто (строк=%s, совпадений=%s)",
                 lines_total,
                 matched,
