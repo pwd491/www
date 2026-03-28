@@ -1,3 +1,20 @@
+(async function redirectIfAuthed() {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    document.documentElement.classList.remove("auth-pending");
+    return;
+  }
+  const resp = await fetch("/api/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (resp.ok) {
+    location.replace("/dashboard");
+    return;
+  }
+  localStorage.removeItem("token");
+  document.documentElement.classList.remove("auth-pending");
+})();
+
 const output = document.getElementById("login-output");
 const form = document.getElementById("login-form");
 

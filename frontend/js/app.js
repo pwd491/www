@@ -1,5 +1,4 @@
 const token = localStorage.getItem("token");
-if (!token) window.location.href = "/login";
 
 const features = [
   { key: "wireguard", title: "WireGuard" },

@@ -1,10 +1,16 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from ..auth.dependencies import get_current_user
 from ..core.security import create_access_token
-from ..models.auth import LoginRequest, TokenResponse
+from ..models.auth import LoginRequest, TokenResponse, UserResponse
 from ..services.auth import authenticate
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+@router.get("/me", response_model=UserResponse)
+def me(username: str = Depends(get_current_user)) -> UserResponse:
+    return UserResponse(username=username)
 
 
 @router.post("/login", response_model=TokenResponse)
