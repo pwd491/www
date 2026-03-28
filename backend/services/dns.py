@@ -199,7 +199,7 @@ class DnsService:
         )
         return True
 
-    def find_queries_by_keywords(self, limit: int = 200) -> list[dict]:
+    def find_queries_by_keywords(self, limit: int | None = None) -> list[dict]:
         keywords = self.list_keywords()
         paths = self._find_querylog_files()
 
@@ -306,7 +306,7 @@ class DnsService:
                     "записей после фильтра: %s",
                     len(wrapped),
                 )
-                return wrapped[:limit]
+                return wrapped if limit is None else wrapped[:limit]
             logger.debug(
                 "DNS query log: файлы непустые (%s байт в первом), но не удалось "
                 "разобрать ни одной JSONL-строки (ошибок JSON: %s)",
@@ -315,7 +315,7 @@ class DnsService:
             )
 
         entries.reverse()
-        out = entries[:limit]
+        out = entries if limit is None else entries[:limit]
         if out:
             logger.debug(
                 "DNS query log: отдано записей=%s (всего совпадений при скане=%s)",
@@ -334,7 +334,7 @@ class DnsService:
         self,
         path: Path,
         keywords: list[str],
-        limit: int,
+        limit: int | None,
         client_names: dict[str, str],
     ) -> list[dict]:
         """Формат {'data': [ {...}, ... ] } или массив записей целиком."""
@@ -371,7 +371,7 @@ class DnsService:
                 row, keywords, entries, client_names
             )
         entries.reverse()
-        return entries[:limit]
+        return entries if limit is None else entries[:limit]
 
 
 dns = DnsService()
