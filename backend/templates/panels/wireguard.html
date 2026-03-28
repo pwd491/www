@@ -1,0 +1,79 @@
+<div class="wg-panel">
+  {% if messages %}
+  <div class="alert alert-{{ messages.type }} alert-dismissible fade show" role="alert">
+    {{ messages.text }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+  </div>
+  {% endif %}
+
+  <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div class="flex-grow-1" style="min-width: 180px;">
+      <label class="form-label small text-body-secondary">Новый клиент</label>
+      <form method="post" action="/dashboard/wireguard/clients/add" class="d-flex gap-2">
+        <input type="text" name="client_name" class="form-control form-control-sm" placeholder="имя (латиница, цифры, _-)" maxlength="15" required>
+        <button type="submit" class="btn btn-primary btn-sm">Добавить</button>
+      </form>
+    </div>
+    <a href="/dashboard/wireguard" class="btn btn-outline-secondary btn-sm">Обновить</a>
+  </div>
+
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Клиент</th>
+          <th>IP</th>
+          <th>Последний визит</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in wireguard.clients %}
+        <tr>
+          <td><code>{{ c.name }}</code></td>
+          <td><code class="text-body-secondary">{{ c.ipv4 or '' }}</code></td>
+          <td>
+            {% set visit = format_visit(c) %}
+            <span {% if visit.title %}title="{{ visit.title }}"{% endif %}>{{ visit.main }}</span>
+            {% if visit.sub %}<div class="wg-sub text-body-secondary">{{ visit.sub }}</div>{% endif %}
+          </td>
+          <td class="wg-actions">
+            <a href="/dashboard/wireguard/clients/{{ c.name }}/config" class="btn btn-outline-secondary btn-sm">Скачать</a>
+            <form method="post" action="/dashboard/wireguard/clients/{{ c.name }}/delete" class="d-inline" onsubmit="return confirm('Удалить клиента «{{ c.name }}»?')">
+              <button type="submit" class="btn btn-danger btn-sm">Удалить</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-body-secondary">Клиентов пока нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <section class="wg-params-block">
+    <h3 class="panel-section-title">Параметры сервера (params)</h3>
+    <p class="small text-body-secondary wg-params-path">{{ wireguard.params_path }}{% if not wireguard.params_exists %} (файл ещё не создан){% endif %}</p>
+    <form method="post" action="/dashboard/wireguard/params">
+      <div class="wg-params-grid mb-3">
+        {% for key in wireguard.params_keys %}
+        <div class="wg-param-field">
+          <label class="form-label small text-body-secondary">{{ wireguard.params_labels[key] }}</label>
+          {% if key in ['SERVER_PRIV_KEY','SERVER_PUB_KEY','ALLOWED_IPS'] or 'IPV' in key or 'KEY' in key %}
+          <textarea name="params_{{ key }}" class="form-control form-control-sm font-monospace" rows="2">{{ wireguard.params.get(key, '') }}</textarea>
+          {% else %}
+          <input type="text" name="params_{{ key }}" class="form-control form-control-sm font-monospace" value="{{ wireguard.params.get(key, '') }}">
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="d-flex gap-2 align-items-center">
+        <div class="form-check">
+          <input type="checkbox" name="apply_to_clients" value="1" class="form-check-input" id="wg-params-apply">
+          <label class="form-check-label text-body-secondary" for="wg-params-apply">Перезаписать все клиентские .conf</label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Сохранить params</button>
+      </div>
+    </form>
+  </section>
+</div>

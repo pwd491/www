@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Панель управления{% endblock %}
+
+{% block body %}
+<header class="navbar navbar-expand-md border-bottom bg-body">
+  <div class="container-fluid px-3 px-md-4">
+    <span class="navbar-brand mb-0 h1">Панель управления</span>
+    <div class="d-flex align-items-center gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="theme-toggle" aria-label="Переключить тему">
+        <span data-theme-icon="dark">☀️</span>
+        <span data-theme-icon="light" class="d-none">🌙</span>
+      </button>
+      <a href="/api/auth/logout" class="btn btn-outline-danger btn-sm">Выйти</a>
+    </div>
+  </div>
+</header>
+
+<main class="container-fluid px-3 px-md-4 py-3 main-content">
+  <div class="row g-3">
+    <aside class="col-12 col-lg-3 col-xl-2">
+      <div class="card h-100">
+        <div class="card-header py-2">
+          <h2 class="h6 mb-0">Функции</h2>
+        </div>
+        <div class="card-body py-2">
+          <ul class="nav flex-column feature-nav">
+            <li class="nav-item">
+              <a class="nav-link py-2 {% if active_feature == 'wireguard' %}active{% endif %}" href="/dashboard/wireguard">WireGuard</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link py-2 {% if active_feature == 'dns' %}active{% endif %}" href="/dashboard/dns">DNS</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link py-2 {% if active_feature == 'zapret' %}active{% endif %}" href="/dashboard/zapret">Zapret</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+    <section class="col-12 col-lg-9 col-xl-10">
+      <div class="card h-100">
+        <div class="card-header py-3">
+          <h2 class="h5 mb-0">
+            {% if active_feature == 'wireguard' %}Клиенты WireGuard
+            {% elif active_feature == 'dns' %}DNS
+            {% elif active_feature == 'zapret' %}Zapret
+            {% else %}Панель{% endif %}
+          </h2>
+        </div>
+        <div class="card-body">
+          {% if active_feature == 'wireguard' and wireguard %}
+            {% include "panels/wireguard.html" %}
+          {% elif active_feature == 'dns' and dns %}
+            {% include "panels/dns.html" %}
+          {% elif active_feature == 'zapret' and zapret %}
+            {% include "panels/zapret.html" %}
+          {% endif %}
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field("change-me-in-env", min_length=12)
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 5_256_000
+    auth_cookie_name: str = "token"
 
     admin_username: str = "admin"
     admin_password: str = "admin123"

@@ -1,0 +1,76 @@
+<div class="wg-panel">
+  {% if messages %}
+  <div class="alert alert-{{ messages.type }} alert-dismissible fade show" role="alert">
+    {{ messages.text }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/dashboard/zapret/sites/add" id="zapret-add-form">
+    <div class="zapret-row mb-3">
+      <div>
+        <label class="form-label small text-body-secondary">Файл списка (.txt)</label>
+        <select name="list_name" class="form-select form-select-sm mb-2" required>
+          <option value="">— выберите файл —</option>
+          {% for item in zapret.lists %}
+          <option value="{{ item.list_name }}" data-scope="{{ item.scope }}">{{ item.filename }} ({{ item.scope }})</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="scope" id="zapret-scope" value="domains">
+      </div>
+      <div class="zapret-sites-field">
+        <label class="form-label small text-body-secondary">Сайты (через пробел)</label>
+        <textarea name="sites" class="form-control form-control-sm" rows="3" placeholder="example.com foo.org …" required></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm mb-4">Добавить в список</button>
+  </form>
+
+  <h3 class="panel-section-title">Удалить адрес из списка</h3>
+  <p class="small text-body-secondary zapret-hint mb-2">Тот же файл, что и для добавления. Адреса — через пробел.</p>
+  <form method="post" action="/dashboard/zapret/sites/remove" class="mb-4" id="zapret-remove-form">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <div class="flex-grow-1" style="min-width: 200px;">
+        <label class="form-label small text-body-secondary">Список</label>
+        <select name="list_name" class="form-select form-select-sm mb-2" required>
+          <option value="">— выберите —</option>
+          {% for item in zapret.lists %}
+          <option value="{{ item.list_name }}" data-scope="{{ item.scope }}">{{ item.filename }} ({{ item.scope }})</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="scope" id="zapret-remove-scope" value="domains">
+      </div>
+      <div class="flex-grow-1" style="min-width: 200px;">
+        <label class="form-label small text-body-secondary">Адреса для удаления (через пробел)</label>
+        <textarea name="sites" class="form-control form-control-sm" rows="2" placeholder="example.com …" required></textarea>
+      </div>
+      <button type="submit" class="btn btn-danger btn-sm">Удалить из списка</button>
+    </div>
+  </form>
+
+  <h3 class="panel-section-title">Проверить сайт</h3>
+  <form method="post" action="/dashboard/zapret/check" class="d-flex gap-2 align-items-end">
+    <div class="flex-grow-1 zapret-check-input">
+      <label class="form-label small text-body-secondary">Домен или URL</label>
+      <input type="text" name="site" class="form-control form-control-sm" placeholder="домен или URL" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Проверить</button>
+  </form>
+  {% if zapret_check_result %}
+  <pre class="output mt-3">{{ zapret_check_result }}</pre>
+  {% endif %}
+</div>
+
+<script>
+  document.querySelectorAll('select[name="list_name"]').forEach(function(sel) {
+    function syncScope() {
+      var opt = sel.options[sel.selectedIndex];
+      var scope = opt && opt.dataset.scope ? opt.dataset.scope : 'domains';
+      var form = sel.closest('form');
+      var hidden = form && form.querySelector('input[name="scope"]');
+      if (hidden) hidden.value = scope;
+    }
+    sel.addEventListener('change', syncScope);
+    syncScope();
+  });
+</script>

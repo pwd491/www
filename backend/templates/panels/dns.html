@@ -1,0 +1,62 @@
+<div class="wg-panel">
+  {% if messages %}
+  <div class="alert alert-{{ messages.type }} alert-dismissible fade show" role="alert">
+    {{ messages.text }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+  </div>
+  {% endif %}
+
+  <h3 class="panel-section-title">Запросы по ключевым словам</h3>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <thead>
+        <tr><th>Время</th><th>Домен</th><th>Клиент</th></tr>
+      </thead>
+      <tbody>
+        {% for e in dns.queries %}
+        <tr>
+          <td>{{ e.time or '—' }}</td>
+          <td>{{ e.domain or '' }}</td>
+          <td title="{{ e.client_ip or '' }}">{{ e.client or '' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-body-secondary">Нет совпадений или лог недоступен</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <a href="/dashboard/dns" class="btn btn-outline-secondary btn-sm mb-4">Обновить запросы</a>
+
+  <h3 class="panel-section-title">Ключевые слова</h3>
+  <form method="post" action="/dashboard/dns/keywords/bulk" class="mb-3">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <div class="flex-grow-1" style="min-width: 200px;">
+        <label class="form-label small text-body-secondary">Новые слова (через пробел)</label>
+        <textarea name="text" class="form-control form-control-sm" rows="2" placeholder="tracker ads …" required></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Добавить</button>
+    </div>
+  </form>
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+      <thead>
+        <tr><th>Слово</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for w in dns.keywords %}
+        <tr>
+          <td><code>{{ w }}</code></td>
+          <td>
+            <form method="post" action="/dashboard/dns/keywords/delete" class="d-inline" onsubmit="return confirm('Удалить ключевое слово «{{ w }}»?')">
+              <input type="hidden" name="keyword" value="{{ w }}">
+              <button type="submit" class="btn btn-danger btn-sm">Удалить</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="2" class="text-body-secondary">Ключевых слов нет</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
