@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from starlette.templating import Jinja2Templates
 
@@ -48,6 +48,14 @@ def _ru_relative_time(sec_ago: int) -> str:
         d = sec_ago // 86400
         return f"{d} дн. назад"
     return "давно"
+
+
+def _format_created_at(ts: int | None) -> str:
+    if not ts:
+        return "—"
+    return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S UTC"
+    )
 
 
 def _format_last_visit(client: dict) -> dict:
@@ -112,6 +120,29 @@ async def page_wireguard(
                 "params_labels": WG_PARAMS_LABELS,
             },
             "format_visit": _format_last_visit,
+        },
+    )
+
+
+@router.get("/dashboard/wireguard/clients/{client_name}")
+async def page_wireguard_client(
+    request: Request,
+    client_name: str,
+    user: str = Depends(get_current_user_from_cookie),
+):
+    clients = wireguard.list_clients_with_activity()
+    client = next((c for c in clients if c.get("name") == client_name), None)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "active_feature": "wireguard_client",
+            "messages": _messages_from_query(request),
+            "wireguard_client": {"client": client},
+            "format_visit": _format_last_visit,
+            "format_created_at": _format_created_at,
         },
     )
 
@@ -182,7 +213,6 @@ async def download_wg_config(
 ):
     cfg = wireguard.get_config(client_name)
     if cfg is None:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Client config not found")
     return Response(
         content=cfg,

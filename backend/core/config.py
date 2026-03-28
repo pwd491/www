@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 5_256_000
     auth_cookie_name: str = "token"
 
-    admin_username: str = "admin"
-    admin_password: str = "admin123"
+    admin_username: str = "123"
+    admin_password: str = "123"
 
     data_dir: Path = Path("backend/data")
     app_db_path: Path = Path("backend/data/webapp.sqlite3")

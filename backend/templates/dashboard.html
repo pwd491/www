@@ -26,7 +26,7 @@
         <div class="card-body py-2">
           <ul class="nav flex-column feature-nav">
             <li class="nav-item">
-              <a class="nav-link py-2 {% if active_feature == 'wireguard' %}active{% endif %}" href="/dashboard/wireguard">WireGuard</a>
+              <a class="nav-link py-2 {% if active_feature == 'wireguard' or active_feature == 'wireguard_client' %}active{% endif %}" href="/dashboard/wireguard">WireGuard</a>
             </li>
             <li class="nav-item">
               <a class="nav-link py-2 {% if active_feature == 'dns' %}active{% endif %}" href="/dashboard/dns">DNS</a>
@@ -43,6 +43,7 @@
         <div class="card-header py-3">
           <h2 class="h5 mb-0">
             {% if active_feature == 'wireguard' %}Клиенты WireGuard
+            {% elif active_feature == 'wireguard_client' %}Клиент: <code class="fs-6">{{ wireguard_client.client.name }}</code>
             {% elif active_feature == 'dns' %}DNS
             {% elif active_feature == 'zapret' %}Zapret
             {% else %}Панель{% endif %}
@@ -51,6 +52,8 @@
         <div class="card-body">
           {% if active_feature == 'wireguard' and wireguard %}
             {% include "panels/wireguard.html" %}
+          {% elif active_feature == 'wireguard_client' and wireguard_client %}
+            {% include "panels/client.html" %}
           {% elif active_feature == 'dns' and dns %}
             {% include "panels/dns.html" %}
           {% elif active_feature == 'zapret' and zapret %}

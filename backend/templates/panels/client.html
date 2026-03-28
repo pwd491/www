@@ -1,0 +1,46 @@
+<div class="wg-panel">
+  {% if messages %}
+  <div class="alert alert-{{ messages.type }} alert-dismissible fade show" role="alert">
+    {{ messages.text }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+  </div>
+  {% endif %}
+
+  {% set c = wireguard_client.client %}
+  {% set visit = format_visit(c) %}
+
+  <p class="mb-3">
+    <a href="/dashboard/wireguard" class="text-decoration-none">← К списку клиентов</a>
+  </p>
+
+  <dl class="row mb-4 small">
+    <dt class="col-sm-3 col-md-2 text-body-secondary">Имя</dt>
+    <dd class="col-sm-9 col-md-10"><code>{{ c.name }}</code></dd>
+    <dt class="col-sm-3 col-md-2 text-body-secondary">IPv4</dt>
+    <dd class="col-sm-9 col-md-10"><code class="text-body-secondary">{{ c.ipv4 or '—' }}</code></dd>
+    <dt class="col-sm-3 col-md-2 text-body-secondary">IPv6</dt>
+    <dd class="col-sm-9 col-md-10"><code class="text-body-secondary">{{ c.ipv6 or '—' }}</code></dd>
+    <dt class="col-sm-3 col-md-2 text-body-secondary">Публичный ключ</dt>
+    <dd class="col-sm-9 col-md-10"><code class="small text-break">{{ c.public_key or '—' }}</code></dd>
+    <dt class="col-sm-3 col-md-2 text-body-secondary">Создан</dt>
+    <dd class="col-sm-9 col-md-10">{{ format_created_at(c.created_at) }}</dd>
+    <dt class="col-sm-3 col-md-2 text-body-secondary">Кем создан</dt>
+    <dd class="col-sm-9 col-md-10">{{ c.created_by or '—' }}</dd>
+    <dt class="col-sm-3 col-md-2 text-body-secondary">Файл конфига</dt>
+    <dd class="col-sm-9 col-md-10"><code class="small text-break">{{ c.config_file or '—' }}</code></dd>
+    <dt class="col-sm-3 col-md-2 text-body-secondary">Последний визит</dt>
+    <dd class="col-sm-9 col-md-10">
+      <span {% if visit.title %}title="{{ visit.title }}"{% endif %}>{{ visit.main }}</span>
+      {% if visit.sub %}<div class="wg-sub text-body-secondary">{{ visit.sub }}</div>{% endif %}
+    </dd>
+  </dl>
+
+  <div class="d-grid gap-2 mb-3">
+    <a href="/dashboard/wireguard/clients/{{ c.name }}/config" class="btn btn-outline-secondary btn-sm wg-client-download-link">Скачать конфигурацию (.conf)</a>
+    <a href="/dashboard/wireguard#wg-params-block" class="btn btn-outline-primary btn-sm">Параметры сервера (пересборка конфигов)</a>
+  </div>
+
+  <form method="post" action="/dashboard/wireguard/clients/{{ c.name }}/delete" class="d-grid" onsubmit="return confirm('Удалить клиента «{{ c.name }}»?')">
+    <button type="submit" class="btn btn-danger btn-sm">Удалить клиента</button>
+  </form>
+</div>

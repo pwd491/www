@@ -6,7 +6,8 @@
   </div>
   {% endif %}
 
-  <h3 class="panel-section-title">Запросы по ключевым словам</h3>
+  <a href="/dashboard/dns" class="btn btn-primary btn-sm w-100">Обновить запросы</a>
+
   <div class="table-responsive mb-4">
     <table class="table table-striped table-hover align-middle">
       <thead>
@@ -25,19 +26,9 @@
       </tbody>
     </table>
   </div>
-  <a href="/dashboard/dns" class="btn btn-outline-secondary btn-sm mb-4">Обновить запросы</a>
 
   <h3 class="panel-section-title">Ключевые слова</h3>
-  <form method="post" action="/dashboard/dns/keywords/bulk" class="mb-3">
-    <div class="d-flex flex-wrap gap-2 align-items-end">
-      <div class="flex-grow-1" style="min-width: 200px;">
-        <label class="form-label small text-body-secondary">Новые слова (через пробел)</label>
-        <textarea name="text" class="form-control form-control-sm" rows="2" placeholder="tracker ads …" required></textarea>
-      </div>
-      <button type="submit" class="btn btn-primary btn-sm">Добавить</button>
-    </div>
-  </form>
-  <div class="table-responsive">
+  <div class="table-responsive mb-3">
     <table class="table table-striped table-hover align-middle">
       <thead>
         <tr><th>Слово</th><th></th></tr>
@@ -59,4 +50,11 @@
       </tbody>
     </table>
   </div>
+  <form method="post" action="/dashboard/dns/keywords/bulk">
+    <div class="mb-2">
+      <label class="form-label small text-body-secondary">Новые слова (через пробел)</label>
+      <textarea name="text" class="form-control form-control-sm" rows="1" placeholder="tracker ads …" required></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm w-100">Добавить</button>
+  </form>
 </div>

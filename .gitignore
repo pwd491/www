@@ -218,3 +218,5 @@ __marimo__/
 *.sqlite3
 .sqlite3-journal
 .DS_Store
+
+backend/dev-mock/

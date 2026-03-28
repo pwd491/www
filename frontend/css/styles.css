@@ -102,8 +102,13 @@ a.wg-client-download-link {
   align-items: start;
 }
 
-.zapret-sites-field textarea {
-  min-height: 4rem;
+/* Однострочная высота как у .form-control-sm (Bootstrap 5) */
+textarea.form-control.form-control-sm {
+  min-height: calc(1.5em + 0.5rem + 2px);
+}
+
+textarea.form-control:not(.form-control-sm) {
+  min-height: calc(1.5em + 0.75rem + 2px);
 }
 
 .zapret-hint {
@@ -128,5 +133,22 @@ a.wg-client-download-link {
 
   .dns-mobile-hide-label {
     display: none !important;
+  }
+}
+
+/* Телефоны: компактнее таблицы в карточках панелей */
+@media (max-width: 576px) {
+  .wg-panel .table {
+    font-size: 0.75rem;
+  }
+
+  .wg-panel .table th,
+  .wg-panel .table td {
+    padding: 0.3rem 0.35rem;
+    vertical-align: middle;
+  }
+
+  .wg-panel .table code {
+    font-size: 0.7rem;
   }
 }
