@@ -565,9 +565,14 @@ textarea {
 @media (max-width: 480px) {
   .topbar h1 {
     font-size: 1rem;
+    display: none;
   }
 
   .panel-section-title {
     font-size: 0.9rem;
+  }
+
+  #feature-title {
+    display: none;
   }
 }
