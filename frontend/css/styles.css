@@ -154,6 +154,7 @@ button {
   border-radius: 8px;
   cursor: pointer;
   touch-action: manipulation;
+  width: 100%;
 }
 
 button.btn-loading {
