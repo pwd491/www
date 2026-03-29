@@ -98,6 +98,21 @@ function parseSpaceSeparated(raw) {
     .filter(Boolean);
 }
 
+/** Runs async work with loading spinner + disabled state on a refresh-style button. */
+async function withButtonLoading(btn, work) {
+  if (!btn || btn.classList.contains("btn-loading")) return;
+  btn.disabled = true;
+  btn.classList.add("btn-loading");
+  btn.setAttribute("aria-busy", "true");
+  try {
+    await work();
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("btn-loading");
+    btn.removeAttribute("aria-busy");
+  }
+}
+
 /** Russian plural for 1 / 2–4 / 5+ (11–14 always many). */
 function ruUnit(n, one, few, many) {
   const nAbs = Math.floor(Math.abs(n));
@@ -698,7 +713,7 @@ function renderWireGuardPanel() {
   });
 
   addBtn.onclick = () => addClient();
-  refreshBtn.onclick = () => loadClients();
+  refreshBtn.onclick = () => withButtonLoading(refreshBtn, loadClients);
 
   const onWgLayout = () => {
     if (!thead.isConnected) {
@@ -980,7 +995,7 @@ function renderZapretPanel() {
   };
 
   addBtn.onclick = () => addSites();
-  refreshListsBtn.onclick = () => loadLists();
+  refreshListsBtn.onclick = () => withButtonLoading(refreshListsBtn, loadLists);
   checkBtn.onclick = () => checkSite();
   removeBtn.onclick = () => removeSites();
 
@@ -1296,8 +1311,8 @@ function renderDnsPanel() {
   });
 
   kwAddBtn.onclick = () => addKeywordsBulk();
-  kwRefreshBtn.onclick = () => loadKeywords();
-  qRefreshBtn.onclick = () => loadQueries();
+  kwRefreshBtn.onclick = () => withButtonLoading(kwRefreshBtn, loadKeywords);
+  qRefreshBtn.onclick = () => withButtonLoading(qRefreshBtn, loadQueries);
 
   loadKeywords();
   loadQueries();

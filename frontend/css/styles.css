@@ -140,6 +140,12 @@ body {
   min-width: 0;
 }
 
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 button {
   background: var(--accent);
   border: none;
@@ -148,6 +154,26 @@ button {
   border-radius: 8px;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+button.btn-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45em;
+  cursor: wait;
+  opacity: 0.92;
+}
+
+button.btn-loading::before {
+  content: "";
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: btn-spin 0.65s linear infinite;
 }
 
 input,
