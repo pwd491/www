@@ -1804,7 +1804,8 @@ function renderBackupsPanel() {
   pathSpan.textContent = "Пути (несколько через пробел или с новой строки)";
   const pathInput = document.createElement("textarea");
   pathInput.rows = 4;
-  pathInput.placeholder = "/var/www/site\n/opt/data\n/etc/nginx";
+  pathInput.placeholder =
+    "/var/www/site\n/opt/AdGuardHome/data/querylog.json*";
   pathInput.autocomplete = "off";
   pathLabel.append(pathSpan, pathInput);
   const addPathBtn = document.createElement("button");

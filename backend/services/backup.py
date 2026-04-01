@@ -1,3 +1,4 @@
+import glob
 import logging
 import os
 import re
@@ -90,20 +91,34 @@ class BackupService:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def _validate_glob_readable(self, pattern: str) -> None:
+        rec = "**" in pattern
+        matches = glob.glob(pattern, recursive=rec)
+        if not matches:
+            raise ValueError("Нет файлов или каталогов по маске")
+        for m in matches:
+            if not os.access(m, os.R_OK):
+                raise ValueError(f"Нет доступа на чтение: {m}")
+
     def add_path(self, raw: str) -> dict:
         s = (raw or "").strip()
         if not s:
             raise ValueError("Путь не может быть пустым")
-        p = Path(s).expanduser()
-        try:
-            resolved = p.resolve()
-        except OSError as e:
-            raise ValueError(f"Некорректный путь: {e}") from e
-        if not resolved.exists():
-            raise ValueError("Путь не существует")
-        if not os.access(resolved, os.R_OK):
-            raise ValueError("Нет доступа на чтение")
-        sp = str(resolved)
+        expanded = os.path.expanduser(s)
+        if glob.has_magic(expanded):
+            self._validate_glob_readable(expanded)
+            sp = expanded
+        else:
+            p = Path(expanded)
+            try:
+                resolved = p.resolve()
+            except OSError as e:
+                raise ValueError(f"Некорректный путь: {e}") from e
+            if not resolved.exists():
+                raise ValueError("Путь не существует")
+            if not os.access(resolved, os.R_OK):
+                raise ValueError("Нет доступа на чтение")
+            sp = str(resolved)
         with storage.connection() as conn:
             try:
                 cur = conn.execute(
@@ -142,6 +157,44 @@ class BackupService:
             cur = conn.execute("DELETE FROM backup_paths WHERE id = ?", (path_id,))
             return cur.rowcount > 0
 
+    def _tar_members_for_saved_path(self, path_str: str) -> list[tuple[Path, str]]:
+        """Пары (путь, имя в архиве). Для glob — все совпадения на момент бэкапа."""
+        expanded = os.path.expanduser(path_str.strip())
+        if glob.has_magic(expanded):
+            rec = "**" in expanded
+            matches = glob.glob(expanded, recursive=rec)
+            if not matches:
+                logger.warning("backup: маска не дала совпадений: %s", path_str)
+                return []
+            out: list[tuple[Path, str]] = []
+            for m in sorted(matches):
+                mp = Path(m)
+                if not mp.exists():
+                    continue
+                if not os.access(mp, os.R_OK):
+                    logger.warning("backup: нет чтения: %s", mp)
+                    continue
+                try:
+                    arcname = mp.resolve().as_posix().lstrip("/")
+                except OSError:
+                    arcname = mp.name
+                out.append((mp, arcname))
+            return out
+        p = Path(expanded)
+        try:
+            p = p.resolve()
+        except OSError as e:
+            raise ValueError(f"Путь недоступен: {path_str}") from e
+        if not p.exists():
+            raise ValueError(f"Путь недоступен: {path_str}")
+        if not os.access(p, os.R_OK):
+            raise ValueError(f"Нет доступа на чтение: {path_str}")
+        try:
+            arcname = p.resolve().as_posix().lstrip("/")
+        except OSError:
+            arcname = p.name
+        return [(p, arcname)]
+
     def _archive_name(self) -> str:
         return f"backup-{time.strftime('%Y%m%d-%H%M%S')}.tar.gz"
 
@@ -179,17 +232,26 @@ class BackupService:
             self._ensure_dir()
             arc_path = self._ensure_dir() / self._archive_name()
 
-            members: list[Path] = []
+            members: list[tuple[Path, str]] = []
+            seen_resolved: set[str] = set()
             for row in paths:
-                p = Path(row["path"])
-                if not p.exists():
-                    raise ValueError(f"Путь недоступен: {row['path']}")
-                members.append(p)
+                for p, arcname in self._tar_members_for_saved_path(row["path"]):
+                    try:
+                        rk = str(p.resolve())
+                    except OSError:
+                        rk = str(p)
+                    if rk in seen_resolved:
+                        continue
+                    seen_resolved.add(rk)
+                    members.append((p, arcname))
+            if not members:
+                raise ValueError(
+                    "Нет доступных путей для архива (проверьте маски и права)"
+                )
 
             try:
                 with tarfile.open(arc_path, "w:gz") as tar:
-                    for p in members:
-                        arcname = p.name
+                    for p, arcname in members:
                         if p.is_dir():
                             tar.add(p, arcname=arcname, recursive=True)
                         else:
