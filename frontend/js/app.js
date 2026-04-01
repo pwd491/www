@@ -72,18 +72,46 @@ function cleanupWgLayoutMql() {
   wgLayoutMqlCleanup = null;
 }
 
-function parseWgHash() {
-  const raw = (location.hash || "").replace(/^#/, "");
-  if (!raw || raw === "wireguard") return { type: "list" };
-  const m = /^wireguard\/client\/(.+)$/.exec(raw);
-  if (m) {
-    try {
-      return { type: "client", name: decodeURIComponent(m[1]) };
-    } catch {
-      return { type: "list" };
-    }
+const WG_VIEW_KEY = "wireguard_view";
+
+function setWireGuardClientView(name) {
+  sessionStorage.setItem(WG_VIEW_KEY, `client:${name}`);
+}
+
+function clearWireGuardClientView() {
+  sessionStorage.removeItem(WG_VIEW_KEY);
+}
+
+/** Карточка клиента без #wireguard в URL — только sessionStorage */
+function parseWireGuardView() {
+  const v = sessionStorage.getItem(WG_VIEW_KEY);
+  if (v && v.startsWith("client:")) {
+    const name = v.slice(7);
+    if (name) return { type: "client", name };
   }
   return { type: "list" };
+}
+
+/** Старые закладки #wireguard / #wireguard/client/… */
+function migrateLegacyWireguardHash() {
+  const h = location.hash || "";
+  if (!h.startsWith("#wireguard")) return;
+  const raw = h.replace(/^#/, "").replace(/^\/+/, "");
+  if (raw.startsWith("wireguard/client/")) {
+    const m = /^wireguard\/client\/(.+)$/.exec(raw);
+    if (m) {
+      try {
+        setWireGuardClientView(decodeURIComponent(m[1]));
+      } catch {
+        /* ignore */
+      }
+    }
+  } else {
+    clearWireGuardClientView();
+  }
+  localStorage.setItem("activeFeatureKey", "wireguard");
+  history.replaceState(null, "", "/dashboard");
+  location.hash = "";
 }
 
 document.getElementById("logout-btn").onclick = () => {
@@ -328,7 +356,9 @@ function renderWireGuardClientDetail(clientName) {
   backBtn.className = "btn-secondary";
   backBtn.textContent = "← К списку клиентов";
   backBtn.onclick = () => {
-    location.hash = "#wireguard";
+    clearWireGuardClientView();
+    history.pushState(null, "", "/dashboard");
+    renderWireGuardPanel();
   };
   headBar.appendChild(backBtn);
 
@@ -707,7 +737,9 @@ function renderWireGuardClientDetail(clientName) {
       );
       return;
     }
-    location.hash = `#wireguard/client/${encodeURIComponent(trimmed)}`;
+    setWireGuardClientView(trimmed);
+    history.replaceState(null, "", "/dashboard");
+    renderWireGuardPanel();
   };
 
   dlBtn.onclick = async () => {
@@ -729,7 +761,9 @@ function renderWireGuardClientDetail(clientName) {
       );
       return;
     }
-    location.hash = "#wireguard";
+    clearWireGuardClientView();
+    history.pushState(null, "", "/dashboard");
+    renderWireGuardPanel();
   };
 
   dnsRefresh.onclick = () => withButtonLoading(dnsRefresh, loadDns);
@@ -745,7 +779,7 @@ function renderWireGuardPanel() {
   outputEl.textContent = "";
   clearHeadActions();
 
-  const route = parseWgHash();
+  const route = parseWireGuardView();
   if (route.type === "client" && route.name) {
     renderWireGuardClientDetail(route.name);
     return;
@@ -1017,9 +1051,9 @@ function renderWireGuardPanel() {
   function rowForClient(c) {
     const tr = document.createElement("tr");
     const tdName = document.createElement("td");
-    const openHref = `#wireguard/client/${encodeURIComponent(c.name)}`;
     const nameLink = document.createElement("a");
-    nameLink.href = openHref;
+    nameLink.href = "/dashboard";
+    nameLink.dataset.wgClient = c.name;
     nameLink.className = "wg-client-open-link";
     nameLink.textContent = c.name;
     nameLink.title = "Подробнее";
@@ -2241,7 +2275,9 @@ features.forEach((feature) => {
     localStorage.setItem("activeFeatureKey", feature.key);
     setActiveFeatureKey(feature.key);
     if (feature.key === "wireguard") {
-      location.hash = "#wireguard";
+      clearWireGuardClientView();
+      history.replaceState(null, "", "/dashboard");
+      if (location.hash) location.hash = "";
     }
     renderFeature(feature);
   };
@@ -2250,29 +2286,27 @@ features.forEach((feature) => {
   featureButtonByKey[feature.key] = btn;
 });
 
-function activeFeatureKeyFromHash() {
-  const h = location.hash || "";
-  if (h.startsWith("#wireguard")) return "wireguard";
-  return null;
-}
+migrateLegacyWireguardHash();
 
-const hashFeatureKey = activeFeatureKeyFromHash();
 const lastKey = localStorage.getItem("activeFeatureKey");
 const selected =
-  (hashFeatureKey && features.find((f) => f.key === hashFeatureKey)) ||
-  (lastKey && features.find((f) => f.key === lastKey)) ||
-  features[0];
+  (lastKey && features.find((f) => f.key === lastKey)) || features[0];
 if (selected) {
   localStorage.setItem("activeFeatureKey", selected.key);
   setActiveFeatureKey(selected.key);
   renderFeature(selected);
 }
 
-/** Hash #wireguard/… должен сразу переключать вкладку и перерисовывать панель (без перезагрузки). */
-function applyWireGuardHashRoute() {
-  if (!location.hash.startsWith("#wireguard")) return;
+document.body.addEventListener("click", (e) => {
+  const a = e.target.closest("a.wg-client-open-link[data-wg-client]");
+  if (!a) return;
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  const name = a.dataset.wgClient;
+  if (!name) return;
+  e.preventDefault();
+  setWireGuardClientView(name);
+  history.replaceState(null, "", "/dashboard");
   localStorage.setItem("activeFeatureKey", "wireguard");
   setActiveFeatureKey("wireguard");
   renderWireGuardPanel();
-}
-window.addEventListener("hashchange", applyWireGuardHashRoute);
+});
