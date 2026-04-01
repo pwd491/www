@@ -71,6 +71,20 @@ function cleanupWgLayoutMql() {
   wgLayoutMqlCleanup = null;
 }
 
+function parseWgHash() {
+  const raw = (location.hash || "").replace(/^#/, "");
+  if (!raw || raw === "wireguard") return { type: "list" };
+  const m = /^wireguard\/client\/(.+)$/.exec(raw);
+  if (m) {
+    try {
+      return { type: "client", name: decodeURIComponent(m[1]) };
+    } catch {
+      return { type: "list" };
+    }
+  }
+  return { type: "list" };
+}
+
 document.getElementById("logout-btn").onclick = () => {
   localStorage.removeItem("token");
   window.location.href = "/login";
@@ -219,11 +233,490 @@ function formatLastVisit(client) {
   };
 }
 
+function wgDetailTimeToMs(raw) {
+  const s = String(raw || "").trim();
+  if (!s || s === "unknown") return null;
+  const iso = s.includes("T") ? s : s.replace(/^(\d{4}-\d{2}-\d{2}) (\d)/, "$1T$2");
+  const p = Date.parse(iso);
+  return Number.isNaN(p) ? null : p;
+}
+
+/** Скачать конфиг клиента; onErr(message) при ошибке */
+async function downloadWgConfigFile(clientName, onErr) {
+  const resp = await fetch(
+    `/api/wireguard/clients/${encodeURIComponent(clientName)}/config`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  let body;
+  try {
+    body = await resp.json();
+  } catch {
+    onErr("Не удалось разобрать ответ сервера");
+    return;
+  }
+  if (!resp.ok) {
+    onErr(
+      typeof body.detail === "string"
+        ? body.detail
+        : JSON.stringify(body.detail || body),
+    );
+    return;
+  }
+  const cfg = body.config;
+  if (typeof cfg !== "string") {
+    onErr("Неожиданный формат конфига");
+    return;
+  }
+  const blob = new Blob([cfg], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `wg-${clientName}.conf`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function renderWireGuardClientDetail(clientName) {
+  titleEl.textContent = "Клиент WireGuard";
+  titleEl.classList.add("feature-title-hide-mobile");
+
+  const panel = document.createElement("div");
+  panel.className = "wg-panel wg-client-detail";
+
+  const status = document.createElement("p");
+  status.className = "wg-status muted";
+
+  const headBar = document.createElement("div");
+  headBar.className = "wg-toolbar wg-client-detail-head";
+  const backBtn = document.createElement("button");
+  backBtn.type = "button";
+  backBtn.className = "btn-secondary";
+  backBtn.textContent = "← К списку клиентов";
+  backBtn.onclick = () => {
+    location.hash = "#wireguard";
+  };
+  headBar.appendChild(backBtn);
+
+  const metaCard = document.createElement("div");
+  metaCard.className = "wg-client-meta";
+
+  const actionsRow = document.createElement("div");
+  actionsRow.className = "wg-toolbar wg-client-actions";
+
+  const renameLabel = document.createElement("label");
+  renameLabel.className = "wg-add-field";
+  const renameSpan = document.createElement("span");
+  renameSpan.className = "muted";
+  renameSpan.textContent = "Новое имя";
+  const renameInput = document.createElement("input");
+  renameInput.type = "text";
+  renameInput.maxLength = 15;
+  renameInput.autocomplete = "off";
+  renameLabel.append(renameSpan, renameInput);
+
+  const renameBtn = document.createElement("button");
+  renameBtn.type = "button";
+  renameBtn.textContent = "Переименовать";
+  const dlBtn = document.createElement("button");
+  dlBtn.type = "button";
+  dlBtn.className = "btn-secondary";
+  dlBtn.textContent = "Скачать файл";
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.className = "btn-danger";
+  delBtn.textContent = "Удалить";
+  actionsRow.append(renameLabel, renameBtn, dlBtn, delBtn);
+
+  const dnsTitle = document.createElement("h3");
+  dnsTitle.className = "panel-section-title";
+  dnsTitle.textContent = "DNS по ключевым словам";
+  const dnsHint = document.createElement("p");
+  dnsHint.className = "muted wg-dns-hint";
+  dnsHint.textContent =
+    "Те же ключевые слова, что в разделе «DNS». Показываются запросы AdGuard Home с IP туннеля этого клиента.";
+
+  const chartsWrap = document.createElement("div");
+  chartsWrap.className = "wg-dns-charts";
+
+  const dnsToolbar = document.createElement("div");
+  dnsToolbar.className = "wg-toolbar";
+  const dnsRefresh = document.createElement("button");
+  dnsRefresh.type = "button";
+  dnsRefresh.className = "btn-secondary";
+  dnsRefresh.textContent = "Обновить DNS";
+  dnsToolbar.appendChild(dnsRefresh);
+
+  const qWrap = document.createElement("div");
+  qWrap.className = "wg-table-wrap";
+  const qTable = document.createElement("table");
+  qTable.className = "data-table";
+  const qThead = document.createElement("thead");
+  qThead.innerHTML =
+    "<tr><th>Время</th><th>Домен</th><th>Ключевые слова</th></tr>";
+  const qTbody = document.createElement("tbody");
+  qTable.append(qThead, qTbody);
+
+  panel.append(
+    status,
+    headBar,
+    metaCard,
+    actionsRow,
+    dnsTitle,
+    dnsHint,
+    chartsWrap,
+    dnsToolbar,
+    qWrap,
+  );
+  qWrap.appendChild(qTable);
+  formEl.appendChild(panel);
+
+  if (headActionsEl) {
+    const headRow = document.createElement("div");
+    headRow.className = "feature-head-wg";
+    headRow.appendChild(titleEl);
+    headActionsEl.appendChild(headRow);
+  }
+
+  let currentName = clientName;
+  let dnsQueriesCache = [];
+
+  function setStatus(text, isError) {
+    if (!text) {
+      status.textContent = "";
+      status.hidden = true;
+      return;
+    }
+    status.hidden = false;
+    status.textContent = text;
+    status.classList.toggle("wg-status-error", Boolean(isError));
+  }
+
+  function renderDnsCharts(stats) {
+    chartsWrap.replaceChildren();
+    if (!stats || !stats.total_queries) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent =
+        "Нет совпадений по ключевым словам или лог AdGuard недоступен.";
+      chartsWrap.appendChild(p);
+      return;
+    }
+
+    const kw = stats.by_keyword || {};
+    const kwEntries = Object.entries(kw).sort((a, b) => b[1] - a[1]);
+    const maxKw = Math.max(...kwEntries.map((x) => x[1]), 1);
+
+    const kwBlock = document.createElement("div");
+    kwBlock.className = "wg-chart-block";
+    const kwH = document.createElement("h4");
+    kwH.className = "wg-chart-title";
+    kwH.textContent = "Совпадения по словам";
+    const kwBars = document.createElement("div");
+    kwBars.className = "wg-bar-list";
+    for (const [k, v] of kwEntries) {
+      const row = document.createElement("div");
+      row.className = "wg-bar-row";
+      const lab = document.createElement("span");
+      lab.className = "wg-bar-label";
+      lab.textContent = k;
+      const track = document.createElement("div");
+      track.className = "wg-bar-track";
+      const fill = document.createElement("div");
+      fill.className = "wg-bar-fill";
+      fill.style.width = `${(v / maxKw) * 100}%`;
+      const num = document.createElement("span");
+      num.className = "wg-bar-num";
+      num.textContent = String(v);
+      track.appendChild(fill);
+      row.append(lab, track, num);
+      kwBars.appendChild(row);
+    }
+    kwBlock.append(kwH, kwBars);
+
+    const hourBlock = document.createElement("div");
+    hourBlock.className = "wg-chart-block";
+    const hourH = document.createElement("h4");
+    hourH.className = "wg-chart-title";
+    hourH.textContent = "Активность по часам";
+    const hours = stats.by_hour || [];
+    const maxH = Math.max(...hours.map((h) => h.count), 1);
+    const svgNs = "http://www.w3.org/2000/svg";
+    const svgW = 420;
+    const svgH = 132;
+    const pad = 10;
+    const svg = document.createElementNS(svgNs, "svg");
+    svg.setAttribute("viewBox", `0 0 ${svgW} ${svgH}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "График запросов по часам");
+    svg.classList.add("wg-chart-svg");
+    if (hours.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "Нет меток времени в логе";
+      hourBlock.append(hourH, empty);
+    } else {
+      const n = hours.length;
+      const pts = hours.map((h, i) => {
+        const x =
+          n === 1 ? svgW / 2 : pad + (i / (n - 1)) * (svgW - 2 * pad);
+        const y = svgH - pad - (h.count / maxH) * (svgH - 2 * pad);
+        return `${x},${y}`;
+      });
+      const poly = document.createElementNS(svgNs, "polyline");
+      poly.setAttribute("fill", "none");
+      poly.setAttribute("stroke", "currentColor");
+      poly.setAttribute("stroke-width", "2");
+      poly.setAttribute("stroke-linejoin", "round");
+      poly.setAttribute("points", pts.join(" "));
+      svg.appendChild(poly);
+      hourBlock.append(hourH, svg);
+    }
+
+    const domBlock = document.createElement("div");
+    domBlock.className = "wg-chart-block";
+    const domH = document.createElement("h4");
+    domH.className = "wg-chart-title";
+    domH.textContent = "Частые домены";
+    const topD = stats.top_domains || [];
+    const maxD = Math.max(...topD.map((d) => d.count), 1);
+    const domBars = document.createElement("div");
+    domBars.className = "wg-bar-list";
+    for (const { domain: d, count: v } of topD) {
+      const row = document.createElement("div");
+      row.className = "wg-bar-row";
+      const lab = document.createElement("span");
+      lab.className = "wg-bar-label wg-bar-label-domain";
+      lab.textContent = d;
+      lab.title = d;
+      const track = document.createElement("div");
+      track.className = "wg-bar-track";
+      const fill = document.createElement("div");
+      fill.className = "wg-bar-fill wg-bar-fill-alt";
+      fill.style.width = `${(v / maxD) * 100}%`;
+      const num = document.createElement("span");
+      num.className = "wg-bar-num";
+      num.textContent = String(v);
+      track.appendChild(fill);
+      row.append(lab, track, num);
+      domBars.appendChild(row);
+    }
+    domBlock.append(domH, domBars);
+
+    chartsWrap.append(kwBlock, hourBlock, domBlock);
+  }
+
+  function renderDnsRows() {
+    qTbody.replaceChildren();
+    const entries = dnsQueriesCache || [];
+    if (!entries.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 3;
+      td.className = "muted";
+      td.textContent = "Нет записей";
+      tr.appendChild(td);
+      qTbody.appendChild(tr);
+      return;
+    }
+    const sorted = [...entries].sort((a, b) => {
+      const ta = wgDetailTimeToMs(a.time);
+      const tb = wgDetailTimeToMs(b.time);
+      const va = ta == null ? Number.NEGATIVE_INFINITY : ta;
+      const vb = tb == null ? Number.NEGATIVE_INFINITY : tb;
+      if (va !== vb) return vb - va;
+      return (a.domain || "").localeCompare(b.domain || "", "ru");
+    });
+    for (const e of sorted) {
+      const tr = document.createElement("tr");
+      const tdT = document.createElement("td");
+      const raw = e.time ?? "";
+      if (raw === "unknown" || !raw) {
+        tdT.textContent = raw || "—";
+      } else {
+        const p = wgDetailTimeToMs(raw);
+        if (p == null) {
+          tdT.textContent = raw;
+        } else {
+          tdT.textContent = formatRelativeTimeRu(p);
+          tdT.title = raw;
+        }
+      }
+      const tdD = document.createElement("td");
+      tdD.textContent = e.domain ?? "";
+      const tdK = document.createElement("td");
+      const kws = e.matched_keywords || [];
+      tdK.textContent = kws.join(", ");
+      tr.append(tdT, tdD, tdK);
+      qTbody.appendChild(tr);
+    }
+  }
+
+  async function loadDns() {
+    setStatus("");
+    const resp = await fetch(
+      `/api/wireguard/clients/${encodeURIComponent(currentName)}/dns-history`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      setStatus("Не удалось разобрать ответ DNS", true);
+      dnsQueriesCache = [];
+      renderDnsRows();
+      renderDnsCharts(null);
+      return;
+    }
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail || body),
+        true,
+      );
+      dnsQueriesCache = [];
+      renderDnsRows();
+      renderDnsCharts(null);
+      return;
+    }
+    dnsQueriesCache = body.entries || [];
+    renderDnsCharts(body.stats || null);
+    renderDnsRows();
+  }
+
+  async function loadClient() {
+    setStatus("");
+    const resp = await fetch(
+      `/api/wireguard/clients/${encodeURIComponent(clientName)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      metaCard.innerHTML = "";
+      const err = document.createElement("p");
+      err.className = "wg-status-error";
+      err.textContent = "Не удалось разобрать ответ сервера";
+      metaCard.appendChild(err);
+      return;
+    }
+    if (!resp.ok) {
+      metaCard.replaceChildren();
+      const err = document.createElement("p");
+      err.className = "wg-status-error";
+      err.textContent =
+        typeof body.detail === "string"
+          ? body.detail
+          : "Клиент не найден";
+      metaCard.appendChild(err);
+      return;
+    }
+    const c = body.client || {};
+    currentName = c.name || clientName;
+    renameInput.value = currentName;
+    metaCard.replaceChildren();
+    const grid = document.createElement("dl");
+    grid.className = "wg-meta-dl";
+    const rows = [
+      ["Имя", currentName],
+      ["IPv4", c.ipv4 || "—"],
+      ["IPv6", c.ipv6 || "—"],
+      ["Публичный ключ", c.public_key || "—"],
+      [
+        "Создан",
+        c.created_at
+          ? `${new Date(c.created_at * 1000).toLocaleString()} (${formatRelativeTimeRu(c.created_at)})`
+          : "—",
+      ],
+    ];
+    const visit = formatLastVisit(c);
+    rows.push(["Последний визит", `${visit.main}${visit.sub ? ` · ${visit.sub}` : ""}`]);
+    for (const [dt, dd] of rows) {
+      const dtEl = document.createElement("dt");
+      dtEl.textContent = dt;
+      const ddEl = document.createElement("dd");
+      if (dt === "Публичный ключ") {
+        const code = document.createElement("code");
+        code.className = "wg-pubkey";
+        code.textContent = dd;
+        ddEl.appendChild(code);
+      } else {
+        ddEl.textContent = dd;
+      }
+      grid.append(dtEl, ddEl);
+    }
+    metaCard.appendChild(grid);
+  }
+
+  renameBtn.onclick = async () => {
+    const trimmed = String(renameInput.value || "").trim();
+    if (!trimmed || trimmed === currentName) {
+      setStatus("Введите другое имя", true);
+      return;
+    }
+    setStatus("");
+    const resp = await fetch("/api/wireguard/clients/rename", {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ old_name: currentName, new_name: trimmed }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    location.hash = `#wireguard/client/${encodeURIComponent(trimmed)}`;
+  };
+
+  dlBtn.onclick = async () => {
+    await downloadWgConfigFile(currentName, (msg) => setStatus(msg, true));
+  };
+
+  delBtn.onclick = async () => {
+    if (!confirm(`Удалить клиента «${currentName}»?`)) return;
+    setStatus("");
+    const resp = await fetch(
+      `/api/wireguard/clients/${encodeURIComponent(currentName)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    );
+    const body = await resp.json();
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    location.hash = "#wireguard";
+  };
+
+  dnsRefresh.onclick = () => withButtonLoading(dnsRefresh, loadDns);
+
+  loadClient();
+  loadDns();
+}
+
 function renderWireGuardPanel() {
   cleanupWgLayoutMql();
   formEl.innerHTML = "";
   outputEl.textContent = "";
   clearHeadActions();
+
+  const route = parseWgHash();
+  if (route.type === "client" && route.name) {
+    renderWireGuardClientDetail(route.name);
+    return;
+  }
 
   titleEl.textContent = "Клиенты WireGuard";
   titleEl.classList.add("feature-title-hide-mobile");
@@ -279,9 +772,8 @@ function renderWireGuardPanel() {
   table.append(thead, tbody);
 
   function syncWgTableHead() {
-    thead.innerHTML = wgIsMobileLayout()
-      ? "<tr><th>Клиент</th><th>IP</th><th>Последний визит</th></tr>"
-      : "<tr><th>Клиент</th><th>IP</th><th>Последний визит</th><th></th></tr>";
+    thead.innerHTML =
+      "<tr><th>Клиент</th><th>IP</th><th>Последний визит</th></tr>";
   }
   syncWgTableHead();
 
@@ -363,7 +855,7 @@ function renderWireGuardPanel() {
 
   function renderClientRows() {
     tbody.replaceChildren();
-    const colspan = wgIsMobileLayout() ? 3 : 4;
+    const colspan = 3;
     if (!clientsCache.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
@@ -489,63 +981,17 @@ function renderWireGuardPanel() {
     status.classList.toggle("wg-status-error", Boolean(isError));
   }
 
-  async function downloadWgConfig(clientName) {
-    setStatus("");
-    const resp = await fetch(
-      `/api/wireguard/clients/${encodeURIComponent(clientName)}/config`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-    let body;
-    try {
-      body = await resp.json();
-    } catch {
-      setStatus("Не удалось разобрать ответ сервера", true);
-      return;
-    }
-    if (!resp.ok) {
-      setStatus(
-        typeof body.detail === "string"
-          ? body.detail
-          : JSON.stringify(body.detail || body),
-        true,
-      );
-      return;
-    }
-    const cfg = body.config;
-    if (typeof cfg !== "string") {
-      setStatus("Неожиданный формат конфига", true);
-      return;
-    }
-    const blob = new Blob([cfg], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `wg-${clientName}.conf`;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
   function rowForClient(c) {
     const tr = document.createElement("tr");
     const tdName = document.createElement("td");
-    if (wgIsMobileLayout()) {
-      const nameLink = document.createElement("a");
-      nameLink.href = "#";
-      nameLink.className = "wg-client-download-link";
-      nameLink.dataset.action = "download";
-      nameLink.dataset.name = c.name;
-      nameLink.textContent = c.name;
-      nameLink.title = "Скачать конфиг";
-      nameLink.setAttribute("aria-label", `Скачать конфиг: ${c.name}`);
-      tdName.appendChild(nameLink);
-    } else {
-      const nameCode = document.createElement("code");
-      nameCode.textContent = c.name;
-      tdName.appendChild(nameCode);
-    }
+    const openHref = `#wireguard/client/${encodeURIComponent(c.name)}`;
+    const nameLink = document.createElement("a");
+    nameLink.href = openHref;
+    nameLink.className = "wg-client-open-link";
+    nameLink.textContent = c.name;
+    nameLink.title = "Подробнее";
+    nameLink.setAttribute("aria-label", `Открыть клиента ${c.name}`);
+    tdName.appendChild(nameLink);
 
     const tdIp = document.createElement("td");
     const ipCode = document.createElement("code");
@@ -568,27 +1014,6 @@ function renderWireGuardPanel() {
     }
 
     tr.append(tdName, tdIp, tdVisit);
-    if (!wgIsMobileLayout()) {
-      const tdAct = document.createElement("td");
-      tdAct.className = "wg-actions";
-      const mk = (label, className, action) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = `${className} wg-row-action`;
-        b.dataset.action = action;
-        b.dataset.name = c.name;
-        b.setAttribute("aria-label", label);
-        b.title = label;
-        b.textContent = label;
-        return b;
-      };
-      tdAct.append(
-        mk("Скачать конфиг", "btn-secondary", "download"),
-        mk("Переименовать", "btn-secondary", "rename"),
-        mk("Удалить", "btn-danger", "delete"),
-      );
-      tr.appendChild(tdAct);
-    }
     return tr;
   }
 
@@ -654,63 +1079,6 @@ function renderWireGuardPanel() {
     e.preventDefault();
     await addClient();
   };
-
-  tbody.addEventListener("click", async (e) => {
-    const ctrl = e.target.closest("button[data-action], a[data-action]");
-    if (!ctrl) return;
-    if (ctrl.tagName === "A") e.preventDefault();
-    const clientName = ctrl.dataset.name;
-    if (!clientName) return;
-
-    if (ctrl.dataset.action === "download") {
-      await downloadWgConfig(clientName);
-      return;
-    }
-
-    if (ctrl.dataset.action === "delete") {
-      if (!confirm(`Удалить клиента «${clientName}»?`)) return;
-      setStatus("");
-      const resp = await fetch(
-        `/api/wireguard/clients/${encodeURIComponent(clientName)}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
-      );
-      const body = await resp.json();
-      if (!resp.ok) {
-        setStatus(
-          typeof body.detail === "string" ? body.detail : JSON.stringify(body),
-          true,
-        );
-        return;
-      }
-      await loadClients();
-      return;
-    }
-
-    if (ctrl.dataset.action === "rename") {
-      const newName = prompt("Новое имя клиента:", clientName);
-      if (newName == null) return;
-      const trimmed = String(newName).trim();
-      if (!trimmed || trimmed === clientName) return;
-      setStatus("");
-      const resp = await fetch("/api/wireguard/clients/rename", {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ old_name: clientName, new_name: trimmed }),
-      });
-      const body = await resp.json();
-      if (!resp.ok) {
-        setStatus(
-          typeof body.detail === "string" ? body.detail : JSON.stringify(body),
-          true,
-        );
-        return;
-      }
-      await loadClients();
-    }
-  });
 
   addBtn.onclick = () => addClient();
   refreshBtn.onclick = () => withButtonLoading(refreshBtn, loadClients);
@@ -1402,6 +1770,9 @@ features.forEach((feature) => {
   btn.onclick = () => {
     localStorage.setItem("activeFeatureKey", feature.key);
     setActiveFeatureKey(feature.key);
+    if (feature.key === "wireguard") {
+      location.hash = "#wireguard";
+    }
     renderFeature(feature);
   };
   li.appendChild(btn);
@@ -1409,10 +1780,29 @@ features.forEach((feature) => {
   featureButtonByKey[feature.key] = btn;
 });
 
+function activeFeatureKeyFromHash() {
+  const h = location.hash || "";
+  if (h.startsWith("#wireguard")) return "wireguard";
+  return null;
+}
+
+const hashFeatureKey = activeFeatureKeyFromHash();
 const lastKey = localStorage.getItem("activeFeatureKey");
 const selected =
-  (lastKey && features.find((f) => f.key === lastKey)) || features[0];
+  (hashFeatureKey && features.find((f) => f.key === hashFeatureKey)) ||
+  (lastKey && features.find((f) => f.key === lastKey)) ||
+  features[0];
 if (selected) {
+  localStorage.setItem("activeFeatureKey", selected.key);
   setActiveFeatureKey(selected.key);
   renderFeature(selected);
 }
+
+/** Hash #wireguard/… должен сразу переключать вкладку и перерисовывать панель (без перезагрузки). */
+function applyWireGuardHashRoute() {
+  if (!location.hash.startsWith("#wireguard")) return;
+  localStorage.setItem("activeFeatureKey", "wireguard");
+  setActiveFeatureKey("wireguard");
+  renderWireGuardPanel();
+}
+window.addEventListener("hashchange", applyWireGuardHashRoute);

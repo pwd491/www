@@ -237,6 +237,24 @@ class WireGuardService:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def get_client_by_name(self, name: str) -> dict | None:
+        if not self._is_valid_name(name):
+            return None
+        with storage.connection() as conn:
+            row = conn.execute(
+                "SELECT name, ipv4, ipv6, public_key, config_file, created_by, created_at "
+                "FROM wireguard_clients WHERE name = ?",
+                (name,),
+            ).fetchone()
+        if not row:
+            return None
+        c = dict(row)
+        by_ip = self._wg_handshakes_by_ipv4()
+        ip = c.get("ipv4") or ""
+        hs = by_ip.get(ip) if by_ip else None
+        c["last_handshake"] = hs
+        return c
+
     def _wg_handshakes_by_ipv4(self) -> dict[str, int]:
         """Map client tunnel IPv4 -> latest handshake unix time from `wg show` (0 = never)."""
         iface = settings.wireguard_iface

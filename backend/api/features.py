@@ -43,6 +43,27 @@ def wg_list() -> dict:
     return {"clients": wireguard.list_clients_with_activity()}
 
 
+@router.get("/wireguard/clients/{client_name}")
+def wg_client_detail(client_name: str) -> dict:
+    c = wireguard.get_client_by_name(client_name)
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"client": c}
+
+
+@router.get("/wireguard/clients/{client_name}/dns-history")
+def wg_client_dns_history(client_name: str) -> dict:
+    c = wireguard.get_client_by_name(client_name)
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    ipv4 = (c.get("ipv4") or "").strip()
+    if not ipv4:
+        raise HTTPException(status_code=400, detail="Client has no IPv4")
+    entries = dns.find_queries_by_keywords(client_ip=ipv4)
+    stats = dns.build_dns_stats(entries)
+    return {"client_ip": ipv4, "entries": entries, "stats": stats}
+
+
 @router.get("/wireguard/params")
 def wg_params_get() -> dict:
     return wireguard.get_params_document()

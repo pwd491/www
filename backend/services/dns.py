@@ -173,19 +173,33 @@ class DnsService:
                 pass
         return "unknown"
 
+    @staticmethod
+    def _normalize_client_ip(raw: str) -> str:
+        s = (raw or "").strip()
+        if s.startswith("[") and "]" in s:
+            s = s.split("]", 1)[0].lstrip("[")
+        return s.strip()
+
     def _append_matching_entries(
         self,
         row: dict,
         keywords: list[str],
         entries: list[dict],
         client_names: dict[str, str],
+        client_ip_filter: str | None = None,
     ) -> bool:
         domain = self._domain_from_log_row(row)
         if not domain:
             return False
-        if not any(k in domain for k in keywords):
+        matched_kws = [k for k in keywords if k in domain]
+        if not matched_kws:
             return False
         client_ip = self._client_from_log_row(row)
+        if client_ip_filter is not None:
+            want = self._normalize_client_ip(client_ip_filter)
+            got = self._normalize_client_ip(client_ip)
+            if want != got:
+                return False
         client_name = client_names.get(client_ip)
         client_display = client_name or client_ip
         entries.append(
@@ -195,13 +209,59 @@ class DnsService:
                 "client": client_display,
                 "client_ip": client_ip,
                 "client_name": client_name,
+                "matched_keywords": matched_kws,
             }
         )
         return True
 
-    def find_queries_by_keywords(self, limit: int | None = None) -> list[dict]:
+    def _time_to_hour_bucket(self, raw: str) -> str | None:
+        s = (raw or "").strip()
+        if not s or s == "unknown":
+            return None
+        iso = s.replace(" ", "T", 1) if " " in s and "T" not in s else s
+        try:
+            dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            return dt.strftime("%Y-%m-%d %H:00")
+        except ValueError:
+            try:
+                base = s.split(".")[0]
+                if len(base) >= 19:
+                    dt = datetime.fromisoformat(base)
+                    return dt.strftime("%Y-%m-%d %H:00")
+            except ValueError:
+                pass
+            return None
+
+    def build_dns_stats(self, entries: list[dict]) -> dict:
+        by_keyword: dict[str, int] = {}
+        by_hour: dict[str, int] = {}
+        domain_counts: dict[str, int] = {}
+        for e in entries:
+            for kw in e.get("matched_keywords") or []:
+                by_keyword[kw] = by_keyword.get(kw, 0) + 1
+            dom = (e.get("domain") or "").strip()
+            if dom:
+                domain_counts[dom] = domain_counts.get(dom, 0) + 1
+            bucket = self._time_to_hour_bucket(str(e.get("time") or ""))
+            if bucket:
+                by_hour[bucket] = by_hour.get(bucket, 0) + 1
+        hours_sorted = sorted(by_hour.items(), key=lambda x: x[0])
+        top_domains = sorted(domain_counts.items(), key=lambda x: -x[1])[:12]
+        return {
+            "by_keyword": by_keyword,
+            "by_hour": [{"hour": k, "count": v} for k, v in hours_sorted],
+            "top_domains": [{"domain": k, "count": v} for k, v in top_domains],
+            "total_queries": len(entries),
+        }
+
+    def find_queries_by_keywords(
+        self,
+        limit: int | None = None,
+        client_ip: str | None = None,
+    ) -> list[dict]:
         keywords = self.list_keywords()
         paths = self._find_querylog_files()
+        client_ip_filter = (client_ip or "").strip() or None
 
         if not keywords:
             logger.debug(
@@ -280,7 +340,11 @@ class DnsService:
                                 empty_domain += 1
                                 continue
                             if self._append_matching_entries(
-                                row, keywords, entries, client_names
+                                row,
+                                keywords,
+                                entries,
+                                client_names,
+                                client_ip_filter,
                             ):
                                 matched += 1
             except OSError as e:
@@ -298,7 +362,7 @@ class DnsService:
 
         if matched == 0 and lines_total == 0 and first_file_stats and first_file_stats > 0:
             wrapped = self._try_load_wrapped_querylog(
-                paths[0], keywords, limit, client_names
+                paths[0], keywords, limit, client_names, client_ip_filter
             )
             if wrapped:
                 logger.debug(
@@ -336,6 +400,7 @@ class DnsService:
         keywords: list[str],
         limit: int | None,
         client_names: dict[str, str],
+        client_ip_filter: str | None = None,
     ) -> list[dict]:
         """Формат {'data': [ {...}, ... ] } или массив записей целиком."""
         max_bytes = 80 * 1024 * 1024
@@ -368,7 +433,7 @@ class DnsService:
         entries: list[dict] = []
         for row in rows:
             self._append_matching_entries(
-                row, keywords, entries, client_names
+                row, keywords, entries, client_names, client_ip_filter
             )
         entries.reverse()
         return entries if limit is None else entries[:limit]

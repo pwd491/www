@@ -140,6 +140,10 @@ body {
   min-width: 0;
 }
 
+#wg-params-apply-clients {
+  width: auto;
+}
+
 @keyframes btn-spin {
   to {
     transform: rotate(360deg);
@@ -271,16 +275,21 @@ li button {
   font-size: 0.88em;
 }
 
-/* Mobile: client name doubles as download control */
-a.wg-client-download-link {
+/* Имя клиента — ссылка на карточку */
+a.wg-client-open-link {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.88em;
+  font-weight: 600;
   color: var(--accent);
-  text-decoration: underline;
+  text-decoration: none;
   text-underline-offset: 0.15em;
 }
 
-a.wg-client-download-link:active {
+a.wg-client-open-link:hover {
+  text-decoration: underline;
+}
+
+a.wg-client-open-link:active {
   opacity: 0.85;
 }
 
@@ -348,6 +357,128 @@ a.wg-client-download-link:active {
   margin-top: 1.25rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
+}
+
+.wg-client-detail-head {
+  margin-bottom: 0.5rem;
+}
+
+.wg-client-meta {
+  margin-bottom: 1rem;
+}
+
+.wg-meta-dl {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.wg-meta-dl dt {
+  margin: 0;
+  color: var(--muted, #888);
+}
+
+.wg-meta-dl dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.wg-pubkey {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.8rem;
+}
+
+.wg-client-actions {
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.wg-dns-hint {
+  font-size: 0.88rem;
+  margin: 0 0 0.75rem;
+}
+
+.wg-dns-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.wg-chart-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: var(--card-inner, transparent);
+}
+
+.wg-chart-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.wg-bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.wg-bar-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 28%) 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.wg-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wg-bar-label-domain {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.wg-bar-track {
+  height: 10px;
+  background: var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.wg-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 85%, transparent);
+}
+
+.wg-bar-fill-alt {
+  background: color-mix(in srgb, var(--text) 35%, var(--accent, #6ea8fe));
+}
+
+.wg-bar-num {
+  font-variant-numeric: tabular-nums;
+  min-width: 2rem;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.wg-chart-svg {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  display: block;
+  color: var(--accent, #6ea8fe);
 }
 
 .wg-params-block .panel-section-title {
