@@ -43,6 +43,10 @@ class BackupAddPathRequest(BaseModel):
     path: str = Field(min_length=1)
 
 
+class BackupPathsBulkRequest(BaseModel):
+    text: str = Field(min_length=1)
+
+
 class BackupSettingsRequest(BaseModel):
     max_archives: int = Field(default=200, ge=1, le=100_000)
     interval_hours: int = Field(default=24, ge=1, le=8760)

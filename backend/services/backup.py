@@ -119,6 +119,24 @@ class BackupService:
             ).fetchone()
         return dict(row) if row else {}
 
+    def add_paths_bulk(self, text: str) -> dict:
+        parts = [p.strip() for p in text.split() if p.strip()]
+        if not parts:
+            raise ValueError("Укажите хотя бы один путь")
+        added: list[dict] = []
+        skipped: list[str] = []
+        errors: list[dict] = []
+        for raw in parts:
+            try:
+                added.append(self.add_path(raw))
+            except ValueError as e:
+                msg = str(e)
+                if "уже добавлен" in msg:
+                    skipped.append(raw)
+                else:
+                    errors.append({"path": raw, "error": msg})
+        return {"added": added, "skipped": skipped, "errors": errors}
+
     def remove_path(self, path_id: int) -> bool:
         with storage.connection() as conn:
             cur = conn.execute("DELETE FROM backup_paths WHERE id = ?", (path_id,))

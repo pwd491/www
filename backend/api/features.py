@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from ..auth.dependencies import get_current_user
 from ..models.features import (
     BackupAddPathRequest,
+    BackupPathsBulkRequest,
     BackupSettingsRequest,
     DnsBulkKeywordsRequest,
     DnsKeywordRequest,
@@ -147,6 +148,11 @@ def backups_status() -> dict:
 @router.post("/backups/paths")
 def backups_add_path(payload: BackupAddPathRequest) -> dict:
     return {"path": backup.add_path(payload.path)}
+
+
+@router.post("/backups/paths/bulk")
+def backups_add_paths_bulk(payload: BackupPathsBulkRequest) -> dict:
+    return backup.add_paths_bulk(payload.text)
 
 
 @router.delete("/backups/paths/{path_id}")

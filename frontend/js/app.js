@@ -1798,18 +1798,18 @@ function renderBackupsPanel() {
   const pathToolbar = document.createElement("div");
   pathToolbar.className = "wg-toolbar";
   const pathLabel = document.createElement("label");
-  pathLabel.className = "wg-add-field backups-path-field";
+  pathLabel.className = "wg-add-field backups-path-field dns-kw-bulk-field";
   const pathSpan = document.createElement("span");
   pathSpan.className = "muted";
-  pathSpan.textContent = "Абсолютный путь";
-  const pathInput = document.createElement("input");
-  pathInput.type = "text";
-  pathInput.placeholder = "/var/www/…";
+  pathSpan.textContent = "Пути (несколько через пробел или с новой строки)";
+  const pathInput = document.createElement("textarea");
+  pathInput.rows = 4;
+  pathInput.placeholder = "/var/www/site\n/opt/data\n/etc/nginx";
   pathInput.autocomplete = "off";
   pathLabel.append(pathSpan, pathInput);
   const addPathBtn = document.createElement("button");
   addPathBtn.type = "button";
-  addPathBtn.textContent = "Добавить";
+  addPathBtn.textContent = "Добавить пути";
   pathToolbar.append(pathLabel, addPathBtn);
 
   const pathsWrap = document.createElement("div");
@@ -2043,19 +2043,19 @@ function renderBackupsPanel() {
   });
 
   addPathBtn.onclick = async () => {
-    const p = String(pathInput.value || "").trim();
-    if (!p) {
-      setStatus("Введите путь", true);
+    const raw = String(pathInput.value || "").trim();
+    if (!raw) {
+      setStatus("Введите хотя бы один путь", true);
       return;
     }
     setStatus("");
-    const resp = await fetch("/api/backups/paths", {
+    const resp = await fetch("/api/backups/paths/bulk", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ path: p }),
+      body: JSON.stringify({ text: raw }),
     });
     const body = await resp.json();
     if (!resp.ok) {
@@ -2065,6 +2065,17 @@ function renderBackupsPanel() {
       );
       return;
     }
+    const added = body.added?.length ?? 0;
+    const skipped = body.skipped?.length ?? 0;
+    const errList = body.errors || [];
+    let msg = `Добавлено: ${added}`;
+    if (skipped) msg += `, уже были: ${skipped}`;
+    if (errList.length) {
+      msg += `. Ошибки: ${errList.map((e) => `${e.path} (${e.error})`).join("; ")}`;
+    }
+    const hardFail = errList.length > 0 && added === 0;
+    setStatus(msg, hardFail);
+    outputEl.textContent = JSON.stringify(body, null, 2);
     pathInput.value = "";
     await loadStatus();
   };
