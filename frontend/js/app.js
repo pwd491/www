@@ -4,6 +4,7 @@ const features = [
   { key: "wireguard", title: "WireGuard" },
   { key: "dns", title: "DNS" },
   { key: "zapret", title: "Zapret" },
+  { key: "backups", title: "Backups" },
 ];
 
 const WG_PARAMS_KEYS = [
@@ -185,6 +186,37 @@ function formatRelativeTimeRu(input) {
   const y = Math.floor(d / 365);
   const yn = Math.max(1, y);
   return `${yn} ${ruUnit(yn, "год", "года", "лет")} назад`;
+}
+
+function formatBackupCountdown(seconds) {
+  if (seconds == null || Number.isNaN(seconds)) return "—";
+  const sec = Math.max(0, Math.floor(Number(seconds)));
+  if (sec === 0) return "сейчас";
+  const d = Math.floor(sec / 86400);
+  let r = sec % 86400;
+  const h = Math.floor(r / 3600);
+  r %= 3600;
+  const m = Math.floor(r / 60);
+  const s = r % 60;
+  const parts = [];
+  if (d) parts.push(`${d} д.`);
+  if (h || d) parts.push(`${h} ч.`);
+  if (m || h || d) parts.push(`${m} мин`);
+  parts.push(`${s} с`);
+  return parts.join(" ");
+}
+
+let backupPanelTimers = { countdown: null, sync: null };
+
+function cleanupBackupPanelTimers() {
+  if (backupPanelTimers.countdown) {
+    clearInterval(backupPanelTimers.countdown);
+    backupPanelTimers.countdown = null;
+  }
+  if (backupPanelTimers.sync) {
+    clearInterval(backupPanelTimers.sync);
+    backupPanelTimers.sync = null;
+  }
 }
 
 function bindPanelStatus(statusEl) {
@@ -708,6 +740,7 @@ function renderWireGuardClientDetail(clientName) {
 
 function renderWireGuardPanel() {
   cleanupWgLayoutMql();
+  cleanupBackupPanelTimers();
   formEl.innerHTML = "";
   outputEl.textContent = "";
   clearHeadActions();
@@ -1100,6 +1133,7 @@ function renderWireGuardPanel() {
 
 function renderZapretPanel() {
   cleanupWgLayoutMql();
+  cleanupBackupPanelTimers();
   clearHeadActions();
   clearFeatureTitleMobileHide();
   titleEl.textContent = "Zapret";
@@ -1372,6 +1406,7 @@ function renderZapretPanel() {
 
 function renderDnsPanel() {
   cleanupWgLayoutMql();
+  cleanupBackupPanelTimers();
   clearHeadActions();
   clearFeatureTitleMobileHide();
   titleEl.textContent = "DNS";
@@ -1686,6 +1721,424 @@ function renderDnsPanel() {
   loadQueries();
 }
 
+function renderBackupsPanel() {
+  cleanupWgLayoutMql();
+  cleanupBackupPanelTimers();
+  clearHeadActions();
+  clearFeatureTitleMobileHide();
+
+  titleEl.textContent = "Резервные копии";
+  formEl.innerHTML = "";
+  outputEl.textContent = "";
+
+  const panel = document.createElement("div");
+  panel.className = "wg-panel backups-panel";
+
+  const status = document.createElement("p");
+  status.className = "wg-status muted";
+  const setStatus = bindPanelStatus(status);
+
+  const headRow = document.createElement("div");
+  headRow.className = "wg-toolbar";
+  const refreshBtn = document.createElement("button");
+  refreshBtn.type = "button";
+  refreshBtn.className = "btn-secondary";
+  refreshBtn.textContent = "Обновить";
+  const runNowBtn = document.createElement("button");
+  runNowBtn.type = "button";
+  runNowBtn.textContent = "Создать бэкап сейчас";
+  headRow.append(refreshBtn, runNowBtn);
+
+  const nextBlock = document.createElement("div");
+  nextBlock.className = "backups-next-block";
+  const nextLabel = document.createElement("p");
+  nextLabel.className = "backups-countdown muted";
+  const nextAbs = document.createElement("p");
+  nextAbs.className = "muted backups-next-abs";
+  nextAbs.style.fontSize = "0.88rem";
+  nextBlock.append(nextLabel, nextAbs);
+
+  const setTitle = document.createElement("h3");
+  setTitle.className = "panel-section-title";
+  setTitle.textContent = "Настройки";
+  const setRow = document.createElement("div");
+  setRow.className = "wg-toolbar backups-settings-row";
+  const maxLabel = document.createElement("label");
+  maxLabel.className = "wg-add-field";
+  const maxSpan = document.createElement("span");
+  maxSpan.className = "muted";
+  maxSpan.textContent = "Хранить архивов";
+  const maxInput = document.createElement("input");
+  maxInput.type = "number";
+  maxInput.min = "1";
+  maxInput.max = "100000";
+  maxInput.step = "1";
+  maxLabel.append(maxSpan, maxInput);
+
+  const intLabel = document.createElement("label");
+  intLabel.className = "wg-add-field";
+  const intSpan = document.createElement("span");
+  intSpan.className = "muted";
+  intSpan.textContent = "Интервал (часов)";
+  const intInput = document.createElement("input");
+  intInput.type = "number";
+  intInput.min = "1";
+  intInput.max = "8760";
+  intInput.step = "1";
+  intLabel.append(intSpan, intInput);
+
+  const saveSetBtn = document.createElement("button");
+  saveSetBtn.type = "button";
+  saveSetBtn.textContent = "Сохранить настройки";
+  setRow.append(maxLabel, intLabel, saveSetBtn);
+
+  const pathsTitle = document.createElement("h3");
+  pathsTitle.className = "panel-section-title";
+  pathsTitle.textContent = "Пути для копирования";
+  const pathToolbar = document.createElement("div");
+  pathToolbar.className = "wg-toolbar";
+  const pathLabel = document.createElement("label");
+  pathLabel.className = "wg-add-field backups-path-field";
+  const pathSpan = document.createElement("span");
+  pathSpan.className = "muted";
+  pathSpan.textContent = "Абсолютный путь";
+  const pathInput = document.createElement("input");
+  pathInput.type = "text";
+  pathInput.placeholder = "/var/www/…";
+  pathInput.autocomplete = "off";
+  pathLabel.append(pathSpan, pathInput);
+  const addPathBtn = document.createElement("button");
+  addPathBtn.type = "button";
+  addPathBtn.textContent = "Добавить";
+  pathToolbar.append(pathLabel, addPathBtn);
+
+  const pathsWrap = document.createElement("div");
+  pathsWrap.className = "wg-table-wrap";
+  const pathsTable = document.createElement("table");
+  pathsTable.className = "data-table";
+  const pathsThead = document.createElement("thead");
+  pathsThead.innerHTML = "<tr><th>Путь</th><th></th></tr>";
+  const pathsTbody = document.createElement("tbody");
+  pathsTable.append(pathsThead, pathsTbody);
+
+  const archTitle = document.createElement("h3");
+  archTitle.className = "panel-section-title";
+  archTitle.textContent = "Архивы";
+  const archWrap = document.createElement("div");
+  archWrap.className = "wg-table-wrap";
+  const archTable = document.createElement("table");
+  archTable.className = "data-table";
+  const archThead = document.createElement("thead");
+  archThead.innerHTML =
+    "<tr><th>Файл</th><th>Размер</th><th>Изменён</th><th></th></tr>";
+  const archTbody = document.createElement("tbody");
+  archTable.append(archThead, archTbody);
+
+  panel.append(
+    status,
+    headRow,
+    nextBlock,
+    setTitle,
+    setRow,
+    pathsTitle,
+    pathToolbar,
+    pathsWrap,
+    archTitle,
+    archWrap,
+  );
+  pathsWrap.appendChild(pathsTable);
+  archWrap.appendChild(archTable);
+  formEl.appendChild(panel);
+
+  let countdownSec = null;
+
+  function updateCountdownDisplay() {
+    if (countdownSec == null) {
+      nextLabel.textContent = "До следующего бэкапа: —";
+      nextAbs.textContent = "";
+      return;
+    }
+    nextLabel.textContent = `До следующего бэкапа: ${formatBackupCountdown(countdownSec)}`;
+  }
+
+  function renderPaths(rows) {
+    pathsTbody.replaceChildren();
+    if (!rows || !rows.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 2;
+      td.className = "muted";
+      td.textContent = "Пути не заданы";
+      tr.appendChild(td);
+      pathsTbody.appendChild(tr);
+      return;
+    }
+    for (const r of rows) {
+      const tr = document.createElement("tr");
+      const tdP = document.createElement("td");
+      const code = document.createElement("code");
+      code.textContent = r.path;
+      code.className = "muted";
+      tdP.appendChild(code);
+      const tdA = document.createElement("td");
+      tdA.className = "wg-actions";
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn-danger";
+      del.textContent = "Удалить";
+      del.dataset.pathId = String(r.id);
+      tdA.appendChild(del);
+      tr.append(tdP, tdA);
+      pathsTbody.appendChild(tr);
+    }
+  }
+
+  function formatBytes(n) {
+    if (typeof n !== "number" || n < 0) return "—";
+    if (n < 1024) return `${n} Б`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`;
+    if (n < 1024 * 1024 * 1024)
+      return `${(n / (1024 * 1024)).toFixed(1)} МБ`;
+    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
+  }
+
+  function renderArchives(rows) {
+    archTbody.replaceChildren();
+    if (!rows || !rows.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 4;
+      td.className = "muted";
+      td.textContent = "Архивов пока нет";
+      tr.appendChild(td);
+      archTbody.appendChild(tr);
+      return;
+    }
+    for (const r of rows) {
+      const tr = document.createElement("tr");
+      const tdN = document.createElement("td");
+      const c = document.createElement("code");
+      c.textContent = r.name;
+      tdN.appendChild(c);
+      const tdS = document.createElement("td");
+      tdS.textContent = formatBytes(r.size_bytes);
+      const tdT = document.createElement("td");
+      const mod = r.modified_at
+        ? new Date(r.modified_at * 1000).toLocaleString()
+        : "—";
+      tdT.textContent = mod;
+      const tdA = document.createElement("td");
+      tdA.className = "wg-actions";
+      const dl = document.createElement("button");
+      dl.type = "button";
+      dl.className = "btn-secondary";
+      dl.textContent = "Скачать";
+      dl.dataset.file = r.name;
+      tdA.appendChild(dl);
+      tr.append(tdN, tdS, tdT, tdA);
+      archTbody.appendChild(tr);
+    }
+  }
+
+  async function loadStatus() {
+    setStatus("");
+    const resp = await fetch("/api/backups", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      setStatus("Не удалось разобрать ответ сервера", true);
+      return;
+    }
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail || body),
+        true,
+      );
+      return;
+    }
+    const st = body.settings || {};
+    maxInput.value = String(st.max_archives ?? 200);
+    intInput.value = String(st.interval_hours ?? 24);
+
+    countdownSec =
+      typeof body.seconds_until_next === "number"
+        ? body.seconds_until_next
+        : null;
+    updateCountdownDisplay();
+    if (!body.paths || !body.paths.length) {
+      nextAbs.textContent =
+        "Добавьте хотя бы один путь — тогда появится расписание.";
+    } else if (typeof body.next_backup_at === "number") {
+      nextAbs.textContent = `Ориентировочно: ${new Date(body.next_backup_at * 1000).toLocaleString()}`;
+    } else {
+      nextAbs.textContent = "";
+    }
+
+    renderPaths(body.paths);
+    renderArchives(body.archives);
+  }
+
+  pathsTbody.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-path-id]");
+    if (!btn) return;
+    const id = btn.dataset.pathId;
+    if (!id) return;
+    if (!confirm("Удалить этот путь из списка?")) return;
+    setStatus("");
+    const resp = await fetch(`/api/backups/paths/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    await loadStatus();
+  });
+
+  archTbody.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-file]");
+    if (!btn) return;
+    const name = btn.dataset.file;
+    if (!name) return;
+    setStatus("");
+    const resp = await fetch(
+      `/api/backups/download/${encodeURIComponent(name)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!resp.ok) {
+      let err;
+      try {
+        err = await resp.json();
+      } catch {
+        err = {};
+      }
+      setStatus(
+        typeof err.detail === "string"
+          ? err.detail
+          : "Не удалось скачать файл",
+        true,
+      );
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  addPathBtn.onclick = async () => {
+    const p = String(pathInput.value || "").trim();
+    if (!p) {
+      setStatus("Введите путь", true);
+      return;
+    }
+    setStatus("");
+    const resp = await fetch("/api/backups/paths", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path: p }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    pathInput.value = "";
+    await loadStatus();
+  };
+
+  saveSetBtn.onclick = async () => {
+    const max_archives = parseInt(maxInput.value, 10);
+    const interval_hours = parseInt(intInput.value, 10);
+    if (!Number.isFinite(max_archives) || max_archives < 1) {
+      setStatus("Укажите число архивов от 1", true);
+      return;
+    }
+    if (!Number.isFinite(interval_hours) || interval_hours < 1) {
+      setStatus("Укажите интервал в часах от 1", true);
+      return;
+    }
+    setStatus("");
+    const resp = await fetch("/api/backups/settings", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ max_archives, interval_hours }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    await loadStatus();
+  };
+
+  runNowBtn.onclick = async () => {
+    setStatus("");
+    const resp = await fetch("/api/backups/run", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      setStatus("Не удалось разобрать ответ сервера", true);
+      return;
+    }
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    outputEl.textContent = JSON.stringify(body, null, 2);
+    await loadStatus();
+  };
+
+  refreshBtn.onclick = () => withButtonLoading(refreshBtn, loadStatus);
+
+  backupPanelTimers.countdown = setInterval(() => {
+    if (countdownSec == null) return;
+    if (countdownSec > 0) countdownSec -= 1;
+    updateCountdownDisplay();
+  }, 1000);
+
+  backupPanelTimers.sync = setInterval(() => {
+    loadStatus();
+  }, 30000);
+
+  loadStatus();
+}
+
 function renderFeature(feature) {
   if (feature.key === "wireguard") {
     renderWireGuardPanel();
@@ -1699,8 +2152,13 @@ function renderFeature(feature) {
     renderDnsPanel();
     return;
   }
+  if (feature.key === "backups") {
+    renderBackupsPanel();
+    return;
+  }
 
   cleanupWgLayoutMql();
+  cleanupBackupPanelTimers();
   clearHeadActions();
   clearFeatureTitleMobileHide();
   titleEl.textContent = feature.title;

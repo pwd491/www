@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 from ..auth.dependencies import get_current_user
 from ..models.features import (
+    BackupAddPathRequest,
+    BackupSettingsRequest,
     DnsBulkKeywordsRequest,
     DnsKeywordRequest,
     WgAddRequest,
@@ -10,6 +13,7 @@ from ..models.features import (
     ZapretAddRequest,
     ZapretCheckRequest,
 )
+from ..services.backup import backup
 from ..services.dns import dns
 from ..services.wireguard import wireguard
 from ..services.zapret import zapret
@@ -133,3 +137,44 @@ def dns_queries() -> dict:
 @router.post("/dns/keywords/bulk")
 def dns_add_keywords_bulk(payload: DnsBulkKeywordsRequest) -> dict:
     return dns.add_keywords_bulk(payload.text)
+
+
+@router.get("/backups")
+def backups_status() -> dict:
+    return backup.status()
+
+
+@router.post("/backups/paths")
+def backups_add_path(payload: BackupAddPathRequest) -> dict:
+    return {"path": backup.add_path(payload.path)}
+
+
+@router.delete("/backups/paths/{path_id}")
+def backups_remove_path(path_id: int) -> dict:
+    ok = backup.remove_path(path_id)
+    return {"removed": ok}
+
+
+@router.put("/backups/settings")
+def backups_put_settings(payload: BackupSettingsRequest) -> dict:
+    return backup.save_settings(
+        max_archives=payload.max_archives,
+        interval_hours=payload.interval_hours,
+    )
+
+
+@router.post("/backups/run")
+def backups_run_now() -> dict:
+    return backup.run_backup()
+
+
+@router.get("/backups/download/{filename}")
+def backups_download(filename: str) -> FileResponse:
+    p = backup.safe_archive_path(filename)
+    if p is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(
+        path=str(p),
+        filename=p.name,
+        media_type="application/gzip",
+    )

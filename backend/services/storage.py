@@ -67,6 +67,15 @@ class Storage:
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS backup_paths (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT NOT NULL UNIQUE,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
 
 
 storage = Storage()

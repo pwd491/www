@@ -182,12 +182,15 @@ button.btn-loading::before {
 
 input,
 textarea {
+  box-sizing: border-box;
   width: 100%;
+  min-height: 2.75rem;
+  line-height: 1.45;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 6px;
-  padding: 0.5rem;
+  padding: 0.5rem 0.65rem;
   margin-top: 0.3rem;
   margin-bottom: 0.7rem;
 }
@@ -230,6 +233,24 @@ li button {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.backups-panel .backups-countdown {
+  font-size: 1.05rem;
+  margin: 0 0 0.25rem;
+}
+
+.backups-next-block {
+  padding: 0.5rem 0 0.25rem;
+}
+
+.backups-settings-row {
+  align-items: flex-end;
+}
+
+.backups-path-field {
+  flex: 2;
+  min-width: min(100%, 320px);
 }
 
 .wg-status {
@@ -507,7 +528,10 @@ a.wg-client-open-link:active {
 
 .wg-param-field input,
 .wg-param-field textarea {
+  box-sizing: border-box;
   width: 100%;
+  min-height: 2.75rem;
+  line-height: 1.45;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
@@ -531,19 +555,20 @@ a.wg-client-open-link:active {
 }
 
 select {
+  box-sizing: border-box;
   width: 100%;
+  min-height: 2.75rem;
+  line-height: 1.45;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 6px;
-  /* padding: 0.5rem; */
-  padding: 0.6rem 0.9rem;
-  /* margin-top: 0.3rem; */
+  padding: 0.5rem 0.9rem;
 }
 
 textarea {
   resize: vertical;
-  min-height: 3rem;
+  min-height: 2.75rem;
   font-family: inherit;
 }
 

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     adguard_home_yaml_path: Path = Path("/opt/AdGuardHome/AdGuardHome.yaml")
     zapret_domains_dir: Path = Path("/etc/zapret/domains")
     zapret_ipset_dir: Path = Path("/opt/zapret/ipset")
+    backup_storage_dir: Path = Path("backend/data/backups")
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="WEBAPP_", extra="ignore")
 
