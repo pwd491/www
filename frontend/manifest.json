@@ -1,0 +1,21 @@
+{
+    "name": "Панель управления",
+    "short_name": "Панель",
+    "description": "Панель управления",
+    "icons": [
+      {
+        "src": "/static/img/favicon.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      },
+      {
+        "src": "/static/img/favicon.png",
+        "sizes": "192x192",
+        "type": "image/png"
+      }
+    ],
+    "start_url": "/dashboard",
+    "display": "standalone",
+    "theme_color": "black",
+    "background_color": "white"
+  }
