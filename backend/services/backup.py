@@ -307,6 +307,16 @@ class BackupService:
             return None
         return p
 
+    def delete_archive(self, filename: str) -> bool:
+        p = self.safe_archive_path(filename)
+        if p is None:
+            return False
+        try:
+            p.unlink()
+            return True
+        except OSError:
+            return False
+
     def status(self) -> dict:
         paths = self.list_paths()
         archives = self.list_archives()
@@ -330,6 +340,7 @@ class BackupService:
                 next_ts = int(nxt)
                 seconds_until = int(nxt - now)
 
+        total_bytes = sum(int(a["size_bytes"]) for a in archives)
         return {
             "paths": paths,
             "settings": {
@@ -338,6 +349,8 @@ class BackupService:
                 "interval_seconds": interval,
             },
             "archives": archives,
+            "archives_count": len(archives),
+            "archives_total_bytes": total_bytes,
             "last_backup_at": last,
             "next_backup_at": next_ts,
             "seconds_until_next": seconds_until,

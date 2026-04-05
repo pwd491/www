@@ -174,6 +174,13 @@ def backups_run_now() -> dict:
     return backup.run_backup()
 
 
+@router.delete("/backups/archives/{filename}")
+def backups_delete_archive(filename: str) -> dict:
+    if not backup.delete_archive(filename):
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"removed": True}
+
+
 @router.get("/backups/download/{filename}")
 def backups_download(filename: str) -> FileResponse:
     p = backup.safe_archive_path(filename)

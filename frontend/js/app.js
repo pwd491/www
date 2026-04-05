@@ -1787,6 +1787,22 @@ function renderBackupsPanel() {
   saveSetBtn.textContent = "Сохранить настройки";
   setRow.append(maxLabel, intLabel, saveSetBtn);
 
+  const archTitle = document.createElement("h3");
+  archTitle.className = "panel-section-title";
+  archTitle.textContent = "Архивы";
+  const archSummary = document.createElement("p");
+  archSummary.className = "muted backups-arch-summary";
+  archSummary.textContent = "Загрузка…";
+  const archWrap = document.createElement("div");
+  archWrap.className = "wg-table-wrap";
+  const archTable = document.createElement("table");
+  archTable.className = "data-table";
+  const archThead = document.createElement("thead");
+  archThead.innerHTML =
+    "<tr><th>Файл</th><th>Размер</th><th>Изменён</th><th colspan=\"2\">Действия</th></tr>";
+  const archTbody = document.createElement("tbody");
+  archTable.append(archThead, archTbody);
+
   const pathsTitle = document.createElement("h3");
   pathsTitle.className = "panel-section-title";
   pathsTitle.textContent = "Пути для копирования";
@@ -1817,30 +1833,18 @@ function renderBackupsPanel() {
   const pathsTbody = document.createElement("tbody");
   pathsTable.append(pathsThead, pathsTbody);
 
-  const archTitle = document.createElement("h3");
-  archTitle.className = "panel-section-title";
-  archTitle.textContent = "Архивы";
-  const archWrap = document.createElement("div");
-  archWrap.className = "wg-table-wrap";
-  const archTable = document.createElement("table");
-  archTable.className = "data-table";
-  const archThead = document.createElement("thead");
-  archThead.innerHTML =
-    "<tr><th>Файл</th><th>Размер</th><th>Изменён</th><th></th></tr>";
-  const archTbody = document.createElement("tbody");
-  archTable.append(archThead, archTbody);
-
   panel.append(
     status,
     headRow,
     nextBlock,
     setTitle,
     setRow,
+    archTitle,
+    archSummary,
+    archWrap,
     pathsTitle,
     pathToolbar,
     pathsWrap,
-    archTitle,
-    archWrap,
   );
   pathsWrap.appendChild(pathsTable);
   archWrap.appendChild(archTable);
@@ -1898,12 +1902,20 @@ function renderBackupsPanel() {
     return `${(n / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
   }
 
-  function renderArchives(rows) {
+  function renderArchives(rows, totalBytes, count) {
+    const n = typeof count === "number" ? count : rows?.length ?? 0;
+    const tb =
+      typeof totalBytes === "number" ? totalBytes : 0;
+    if (n === 0) {
+      archSummary.textContent = "Архивов нет — занято 0 Б.";
+    } else {
+      archSummary.textContent = `Всего архивов: ${n}, суммарный размер: ${formatBytes(tb)}`;
+    }
     archTbody.replaceChildren();
     if (!rows || !rows.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 4;
+      td.colSpan = 5;
       td.className = "muted";
       td.textContent = "Архивов пока нет";
       tr.appendChild(td);
@@ -1923,15 +1935,25 @@ function renderBackupsPanel() {
         ? new Date(r.modified_at * 1000).toLocaleString()
         : "—";
       tdT.textContent = mod;
-      const tdA = document.createElement("td");
-      tdA.className = "wg-actions";
+      const tdDl = document.createElement("td");
+      tdDl.className = "wg-actions";
       const dl = document.createElement("button");
       dl.type = "button";
       dl.className = "btn-secondary";
       dl.textContent = "Скачать";
       dl.dataset.file = r.name;
-      tdA.appendChild(dl);
-      tr.append(tdN, tdS, tdT, tdA);
+      dl.dataset.archiveAction = "download";
+      tdDl.appendChild(dl);
+      const tdDel = document.createElement("td");
+      tdDel.className = "wg-actions";
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn-danger";
+      del.textContent = "Удалить";
+      del.dataset.file = r.name;
+      del.dataset.archiveAction = "delete";
+      tdDel.appendChild(del);
+      tr.append(tdN, tdS, tdT, tdDl, tdDel);
       archTbody.appendChild(tr);
     }
   }
@@ -1976,7 +1998,11 @@ function renderBackupsPanel() {
     }
 
     renderPaths(body.paths);
-    renderArchives(body.archives);
+    renderArchives(
+      body.archives,
+      body.archives_total_bytes,
+      body.archives_count,
+    );
   }
 
   pathsTbody.addEventListener("click", async (e) => {
@@ -2002,10 +2028,39 @@ function renderBackupsPanel() {
   });
 
   archTbody.addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-file]");
+    const btn = e.target.closest("button[data-archive-action][data-file]");
     if (!btn) return;
     const name = btn.dataset.file;
     if (!name) return;
+    const action = btn.dataset.archiveAction;
+
+    if (action === "delete") {
+      if (!confirm(`Удалить архив «${name}»?`)) return;
+      setStatus("");
+      const resp = await fetch(
+        `/api/backups/archives/${encodeURIComponent(name)}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+      );
+      let body;
+      try {
+        body = await resp.json();
+      } catch {
+        body = {};
+      }
+      if (!resp.ok) {
+        setStatus(
+          typeof body.detail === "string"
+            ? body.detail
+            : "Не удалось удалить архив",
+          true,
+        );
+        return;
+      }
+      await loadStatus();
+      return;
+    }
+
+    if (action !== "download") return;
     setStatus("");
     const resp = await fetch(
       `/api/backups/download/${encodeURIComponent(name)}`,
