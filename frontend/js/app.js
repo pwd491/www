@@ -498,45 +498,6 @@ function renderWireGuardClientDetail(clientName) {
     }
     kwBlock.append(kwH, kwBars);
 
-    const hourBlock = document.createElement("div");
-    hourBlock.className = "wg-chart-block";
-    const hourH = document.createElement("h4");
-    hourH.className = "wg-chart-title";
-    hourH.textContent = "Активность по часам";
-    const hours = stats.by_hour || [];
-    const maxH = Math.max(...hours.map((h) => h.count), 1);
-    const svgNs = "http://www.w3.org/2000/svg";
-    const svgW = 420;
-    const svgH = 132;
-    const pad = 10;
-    const svg = document.createElementNS(svgNs, "svg");
-    svg.setAttribute("viewBox", `0 0 ${svgW} ${svgH}`);
-    svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "График запросов по часам");
-    svg.classList.add("wg-chart-svg");
-    if (hours.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "muted";
-      empty.textContent = "Нет меток времени в логе";
-      hourBlock.append(hourH, empty);
-    } else {
-      const n = hours.length;
-      const pts = hours.map((h, i) => {
-        const x =
-          n === 1 ? svgW / 2 : pad + (i / (n - 1)) * (svgW - 2 * pad);
-        const y = svgH - pad - (h.count / maxH) * (svgH - 2 * pad);
-        return `${x},${y}`;
-      });
-      const poly = document.createElementNS(svgNs, "polyline");
-      poly.setAttribute("fill", "none");
-      poly.setAttribute("stroke", "currentColor");
-      poly.setAttribute("stroke-width", "2");
-      poly.setAttribute("stroke-linejoin", "round");
-      poly.setAttribute("points", pts.join(" "));
-      svg.appendChild(poly);
-      hourBlock.append(hourH, svg);
-    }
-
     const domBlock = document.createElement("div");
     domBlock.className = "wg-chart-block";
     const domH = document.createElement("h4");
@@ -567,7 +528,7 @@ function renderWireGuardClientDetail(clientName) {
     }
     domBlock.append(domH, domBars);
 
-    chartsWrap.append(kwBlock, hourBlock, domBlock);
+    chartsWrap.append(kwBlock, domBlock);
   }
 
   function renderDnsRows() {
