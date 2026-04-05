@@ -258,6 +258,23 @@ li button {
   font-size: 0.92rem;
 }
 
+.backups-archive-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.backups-archive-actions {
+  vertical-align: middle;
+}
+
+.backups-archive-actions-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 .wg-status {
   margin: 0;
   min-height: 1.25rem;
@@ -746,6 +763,28 @@ textarea {
   .wg-toolbar .zapret-check-input {
     width: 100%;
     min-width: 0;
+  }
+
+  .backups-archive-table {
+    min-width: min(100%, 520px);
+  }
+
+  .backups-archive-table .backups-archive-actions-inner {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.35rem;
+  }
+
+  .backups-archive-table .backups-archive-actions-inner button {
+    width: 100%;
+    min-height: 44px;
+    white-space: normal;
+  }
+
+  .backups-archive-table .backups-archive-actions {
+    width: 100%;
+    max-width: 100%;
   }
 }
 

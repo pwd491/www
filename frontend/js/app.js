@@ -1794,9 +1794,9 @@ function renderBackupsPanel() {
   archSummary.className = "muted backups-arch-summary";
   archSummary.textContent = "Загрузка…";
   const archWrap = document.createElement("div");
-  archWrap.className = "wg-table-wrap";
+  archWrap.className = "wg-table-wrap backups-archive-wrap";
   const archTable = document.createElement("table");
-  archTable.className = "data-table";
+  archTable.className = "data-table backups-archive-table";
   const archThead = document.createElement("thead");
   archThead.innerHTML =
     "<tr><th>Файл</th><th>Размер</th><th>Изменён</th><th colspan=\"2\">Действия</th></tr>";
@@ -1935,25 +1935,26 @@ function renderBackupsPanel() {
         ? new Date(r.modified_at * 1000).toLocaleString()
         : "—";
       tdT.textContent = mod;
-      const tdDl = document.createElement("td");
-      tdDl.className = "wg-actions";
+      const tdAct = document.createElement("td");
+      tdAct.colSpan = 2;
+      tdAct.className = "backups-archive-actions";
+      const actInner = document.createElement("div");
+      actInner.className = "backups-archive-actions-inner";
       const dl = document.createElement("button");
       dl.type = "button";
       dl.className = "btn-secondary";
       dl.textContent = "Скачать";
       dl.dataset.file = r.name;
       dl.dataset.archiveAction = "download";
-      tdDl.appendChild(dl);
-      const tdDel = document.createElement("td");
-      tdDel.className = "wg-actions";
       const del = document.createElement("button");
       del.type = "button";
       del.className = "btn-danger";
       del.textContent = "Удалить";
       del.dataset.file = r.name;
       del.dataset.archiveAction = "delete";
-      tdDel.appendChild(del);
-      tr.append(tdN, tdS, tdT, tdDl, tdDel);
+      actInner.append(dl, del);
+      tdAct.appendChild(actInner);
+      tr.append(tdN, tdS, tdT, tdAct);
       archTbody.appendChild(tr);
     }
   }
