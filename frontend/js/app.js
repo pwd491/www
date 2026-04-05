@@ -770,11 +770,11 @@ function renderWireGuardPanel() {
   applyCb.id = "wg-params-apply-clients";
   const applySpan = document.createElement("span");
   applySpan.className = "muted";
-  applySpan.textContent = "Перезаписать все клиентские .conf";
+  applySpan.textContent = "Перезаписать клиентов";
   applyLabel.append(applyCb, applySpan);
   const paramsSaveBtn = document.createElement("button");
   paramsSaveBtn.type = "button";
-  paramsSaveBtn.textContent = "Сохранить params";
+  paramsSaveBtn.textContent = "Сохранить";
   paramsToolbar.append(applyLabel, paramsSaveBtn);
   const paramsStatus = document.createElement("p");
   paramsStatus.className = "wg-status muted";
@@ -1816,7 +1816,7 @@ function renderBackupsPanel() {
   const pathInput = document.createElement("textarea");
   pathInput.rows = 4;
   pathInput.placeholder =
-    "/var/www/site\n/opt/AdGuardHome/data/querylog.json*";
+    "/var/www/site";
   pathInput.autocomplete = "off";
   pathLabel.append(pathSpan, pathInput);
   const addPathBtn = document.createElement("button");
