@@ -2277,16 +2277,26 @@ function renderFeature(feature) {
 const featureButtonByKey = {};
 
 function setActiveFeatureKey(key) {
-  Object.values(featureButtonByKey).forEach((btn) =>
-    btn.classList.remove("active")
-  );
-  const btn = featureButtonByKey[key];
-  if (btn) btn.classList.add("active");
+  Object.entries(featureButtonByKey).forEach(([k, btn]) => {
+    const active = k === key;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+    btn.tabIndex = active ? 0 : -1;
+  });
 }
+
+listEl.setAttribute("role", "tablist");
+listEl.setAttribute("aria-label", "Функции");
 
 features.forEach((feature) => {
   const li = document.createElement("li");
+  li.setAttribute("role", "presentation");
   const btn = document.createElement("button");
+  btn.type = "button";
+  btn.setAttribute("role", "tab");
+  btn.id = `feature-tab-${feature.key}`;
+  btn.setAttribute("aria-selected", "false");
+  btn.tabIndex = -1;
   btn.textContent = feature.title;
   btn.onclick = () => {
     localStorage.setItem("activeFeatureKey", feature.key);
@@ -2301,6 +2311,32 @@ features.forEach((feature) => {
   li.appendChild(btn);
   listEl.appendChild(li);
   featureButtonByKey[feature.key] = btn;
+});
+
+listEl.addEventListener("keydown", (e) => {
+  const order = features.map((f) => f.key);
+  const tabs = order.map((k) => featureButtonByKey[k]).filter(Boolean);
+  const i = tabs.indexOf(document.activeElement);
+  if (i < 0) return;
+  let next = i;
+  if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+    e.preventDefault();
+    next = (i + 1) % tabs.length;
+  } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+    e.preventDefault();
+    next = (i - 1 + tabs.length) % tabs.length;
+  } else if (e.key === "Home") {
+    e.preventDefault();
+    next = 0;
+  } else if (e.key === "End") {
+    e.preventDefault();
+    next = tabs.length - 1;
+  } else {
+    return;
+  }
+  const t = tabs[next];
+  t.focus();
+  t.click();
 });
 
 migrateLegacyWireguardHash();
