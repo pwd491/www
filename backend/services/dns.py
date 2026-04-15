@@ -1,8 +1,12 @@
 import json
 import logging
-import yaml
+from collections import deque
 from datetime import datetime
 from pathlib import Path
+from typing import Iterator
+
+import ijson
+import yaml
 
 from ..core.config import settings
 from .storage import storage
@@ -184,7 +188,7 @@ class DnsService:
         self,
         row: dict,
         keywords: list[str],
-        entries: list[dict],
+        entries: list[dict] | deque[dict],
         client_names: dict[str, str],
         client_ip_filter: str | None = None,
     ) -> bool:
@@ -254,11 +258,94 @@ class DnsService:
             "total_queries": len(entries),
         }
 
+    def _iter_wrapped_querylog_rows(self, path: Path) -> Iterator[dict]:
+        """
+        Один большой JSON без JSONL: читаем потоково (ijson), без загрузки файла целиком.
+        Поддержка `{"data":[...]}` и корневого массива; для маленьких файлов — fallback через json.loads.
+        """
+        max_fallback_bytes = 80 * 1024 * 1024
+        try:
+            path.stat()
+        except OSError as e:
+            logger.debug("DNS query log: пропуск %s (%s)", path, e)
+            yield from ()
+            return
+
+        with path.open("rb") as f:
+            buf = f.read(8192)
+        if not buf:
+            yield from ()
+            return
+        lead = buf.lstrip()[:1]
+        if lead == b"[":
+            prefixes = ["item"]
+        elif lead == b"{":
+            prefixes = ["data.item"]
+        else:
+            yield from ()
+            return
+
+        yielded = False
+        for prefix in prefixes:
+            with path.open("rb") as f:
+                try:
+                    for obj in ijson.items(f, prefix):
+                        if isinstance(obj, dict):
+                            yielded = True
+                            yield obj
+                except Exception as e:
+                    logger.debug(
+                        "DNS query log: потоковый JSON prefix=%s: %s", prefix, e
+                    )
+            if yielded:
+                return
+
+        try:
+            sz = path.stat().st_size
+        except OSError:
+            yield from ()
+            return
+        if sz > max_fallback_bytes:
+            logger.debug(
+                "DNS query log: единый JSON (%s байт): поток не дал записей, "
+                "целиком не загружаем",
+                sz,
+            )
+            yield from ()
+            return
+
+        try:
+            raw = path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.debug("DNS query log: fallback цельный JSON не разобран: %s", e)
+            yield from ()
+            return
+
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            for x in data["data"]:
+                if isinstance(x, dict):
+                    yield x
+        elif isinstance(data, list):
+            for x in data:
+                if isinstance(x, dict):
+                    yield x
+        elif isinstance(data, dict):
+            yield data
+
     def find_queries_by_keywords(
         self,
         limit: int | None = None,
         client_ip: str | None = None,
     ) -> list[dict]:
+        if limit is not None:
+            try:
+                limit = int(limit)
+            except (TypeError, ValueError):
+                limit = None
+        if limit is not None:
+            limit = max(1, limit)
+
         keywords = self.list_keywords()
         paths = self._find_querylog_files()
         client_ip_filter = (client_ip or "").strip() or None
@@ -288,7 +375,11 @@ class DnsService:
             self.sync_adguard_clients_from_home()
             client_names = self._load_adguard_client_names()
 
-        entries: list[dict] = []
+        entries: list[dict] | deque[dict]
+        if limit is None:
+            entries = []
+        else:
+            entries = deque(maxlen=limit)
         lines_total = 0
         json_errors = 0
         empty_domain = 0
@@ -323,16 +414,17 @@ class DnsService:
                                 )
                             continue
                         if isinstance(parsed, list):
-                            iter_rows = [x for x in parsed if isinstance(x, dict)]
-                        elif isinstance(parsed, dict) and isinstance(
-                            parsed.get("data"), list
-                        ):
-                            iter_rows = [x for x in parsed["data"] if isinstance(x, dict)]
+                            iter_rows = parsed
+                        elif isinstance(parsed, dict) and isinstance(parsed.get("data"), list):
+                            iter_rows = parsed["data"]
                         elif isinstance(parsed, dict):
-                            iter_rows = [parsed]
+                            iter_rows = (parsed,)
                         else:
+                            del parsed
                             continue
                         for row in iter_rows:
+                            if not isinstance(row, dict):
+                                continue
                             if sample_keys is None and row:
                                 sample_keys = list(row.keys())[:25]
                             dom = self._domain_from_log_row(row)
@@ -347,6 +439,7 @@ class DnsService:
                                 client_ip_filter,
                             ):
                                 matched += 1
+                        del parsed
             except OSError as e:
                 logger.error("DNS query log: чтение файла %s: %s", path, e)
                 return []
@@ -361,16 +454,30 @@ class DnsService:
             )
 
         if matched == 0 and lines_total == 0 and first_file_stats and first_file_stats > 0:
-            wrapped = self._try_load_wrapped_querylog(
-                paths[0], keywords, limit, client_names, client_ip_filter
-            )
-            if wrapped:
+            for row in self._iter_wrapped_querylog_rows(paths[0]):
+                if sample_keys is None and row:
+                    sample_keys = list(row.keys())[:25]
+                dom = self._domain_from_log_row(row)
+                if not dom:
+                    empty_domain += 1
+                    continue
+                if self._append_matching_entries(
+                    row,
+                    keywords,
+                    entries,
+                    client_names,
+                    client_ip_filter,
+                ):
+                    matched += 1
+            if matched > 0:
                 logger.debug(
                     "DNS query log: использован формат единого JSON (не JSONL), "
-                    "записей после фильтра: %s",
-                    len(wrapped),
+                    "совпадений: %s",
+                    matched,
                 )
-                return wrapped if limit is None else wrapped[:limit]
+                out = list(entries)
+                out.reverse()
+                return out if limit is None else out[:limit]
             logger.debug(
                 "DNS query log: файлы непустые (%s байт в первом), но не удалось "
                 "разобрать ни одной JSONL-строки (ошибок JSON: %s)",
@@ -378,8 +485,8 @@ class DnsService:
                 json_errors,
             )
 
-        entries.reverse()
-        out = entries if limit is None else entries[:limit]
+        out = list(entries)
+        out.reverse()
         if out:
             logger.debug(
                 "DNS query log: отдано записей=%s (всего совпадений при скане=%s)",
@@ -393,50 +500,6 @@ class DnsService:
                 matched,
             )
         return out
-
-    def _try_load_wrapped_querylog(
-        self,
-        path: Path,
-        keywords: list[str],
-        limit: int | None,
-        client_names: dict[str, str],
-        client_ip_filter: str | None = None,
-    ) -> list[dict]:
-        """Формат {'data': [ {...}, ... ] } или массив записей целиком."""
-        max_bytes = 80 * 1024 * 1024
-        try:
-            if path.stat().st_size > max_bytes:
-                logger.debug(
-                    "DNS query log: файл слишком большой для цельного JSON (%s > %s)",
-                    path.stat().st_size,
-                    max_bytes,
-                )
-                return []
-            raw = path.read_text(encoding="utf-8")
-            data = json.loads(raw)
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.debug("DNS query log: цельный JSON не разобран: %s", e)
-            return []
-
-        rows: list[dict] = []
-        if isinstance(data, dict) and isinstance(data.get("data"), list):
-            rows = [x for x in data["data"] if isinstance(x, dict)]
-        elif isinstance(data, list):
-            rows = [x for x in data if isinstance(x, dict)]
-        else:
-            logger.debug(
-                "DNS query log: неожиданная структура JSON (тип корня: %s)",
-                type(data).__name__,
-            )
-            return []
-
-        entries: list[dict] = []
-        for row in rows:
-            self._append_matching_entries(
-                row, keywords, entries, client_names, client_ip_filter
-            )
-        entries.reverse()
-        return entries if limit is None else entries[:limit]
 
 
 dns = DnsService()

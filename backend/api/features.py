@@ -57,14 +57,14 @@ def wg_client_detail(client_name: str) -> dict:
 
 
 @router.get("/wireguard/clients/{client_name}/dns-history")
-def wg_client_dns_history(client_name: str) -> dict:
+def wg_client_dns_history(client_name: str, limit: int = 2000) -> dict:
     c = wireguard.get_client_by_name(client_name)
     if not c:
         raise HTTPException(status_code=404, detail="Client not found")
     ipv4 = (c.get("ipv4") or "").strip()
     if not ipv4:
         raise HTTPException(status_code=400, detail="Client has no IPv4")
-    entries = dns.find_queries_by_keywords(client_ip=ipv4)
+    entries = dns.find_queries_by_keywords(client_ip=ipv4, limit=limit)
     stats = dns.build_dns_stats(entries)
     return {"client_ip": ipv4, "entries": entries, "stats": stats}
 
@@ -131,8 +131,8 @@ def dns_delete_keyword(payload: DnsKeywordRequest) -> dict:
 
 
 @router.get("/dns/queries")
-def dns_queries() -> dict:
-    return {"entries": dns.find_queries_by_keywords()}
+def dns_queries(limit: int = 2000) -> dict:
+    return {"entries": dns.find_queries_by_keywords(limit=limit)}
 
 
 @router.post("/dns/keywords/bulk")
