@@ -74,6 +74,7 @@ function cleanupWgLayoutMql() {
 }
 
 const WG_VIEW_KEY = "wireguard_view";
+const AWG_VIEW_KEY = "amneziawg_view";
 
 function setWireGuardClientView(name) {
   sessionStorage.setItem(WG_VIEW_KEY, `client:${name}`);
@@ -83,9 +84,26 @@ function clearWireGuardClientView() {
   sessionStorage.removeItem(WG_VIEW_KEY);
 }
 
+function setAmneziaWGClientView(name) {
+  sessionStorage.setItem(AWG_VIEW_KEY, `client:${name}`);
+}
+
+function clearAmneziaWGClientView() {
+  sessionStorage.removeItem(AWG_VIEW_KEY);
+}
+
 /** Карточка клиента без #wireguard в URL — только sessionStorage */
 function parseWireGuardView() {
   const v = sessionStorage.getItem(WG_VIEW_KEY);
+  if (v && v.startsWith("client:")) {
+    const name = v.slice(7);
+    if (name) return { type: "client", name };
+  }
+  return { type: "list" };
+}
+
+function parseAmneziaWGView() {
+  const v = sessionStorage.getItem(AWG_VIEW_KEY);
   if (v && v.startsWith("client:")) {
     const name = v.slice(7);
     if (name) return { type: "client", name };
@@ -383,6 +401,13 @@ function renderAmneziaWGPanel() {
   formEl.innerHTML = "";
   outputEl.textContent = "";
   clearHeadActions();
+
+  const route = parseAmneziaWGView();
+  if (route.type === "client" && route.name) {
+    renderAmneziaWGClientDetail(route.name);
+    return;
+  }
+
   titleEl.textContent = "Клиенты AmneziaWG";
   titleEl.classList.add("feature-title-hide-mobile");
 
@@ -493,7 +518,14 @@ function renderAmneziaWGPanel() {
   function rowForClient(c) {
     const tr = document.createElement("tr");
     const tdName = document.createElement("td");
-    tdName.textContent = c.name;
+    const nameLink = document.createElement("a");
+    nameLink.href = "/dashboard";
+    nameLink.dataset.awgClient = c.name;
+    nameLink.className = "awg-client-open-link";
+    nameLink.textContent = c.name;
+    nameLink.title = "Подробнее";
+    nameLink.setAttribute("aria-label", `Открыть клиента ${c.name}`);
+    tdName.appendChild(nameLink);
     const tdIp = document.createElement("td");
     const ipCode = document.createElement("code");
     ipCode.className = "muted";
@@ -599,6 +631,377 @@ function renderAmneziaWGPanel() {
   };
 
   loadClients();
+}
+
+function renderAmneziaWGClientDetail(clientName) {
+  titleEl.textContent = "Клиент AmneziaWG";
+  titleEl.classList.add("feature-title-hide-mobile");
+
+  const panel = document.createElement("div");
+  panel.className = "wg-panel wg-client-detail";
+
+  const status = document.createElement("p");
+  status.className = "wg-status muted";
+
+  const headBar = document.createElement("div");
+  headBar.className = "wg-toolbar wg-client-detail-head";
+  const backBtn = document.createElement("button");
+  backBtn.type = "button";
+  backBtn.className = "btn-secondary";
+  backBtn.textContent = "← К списку клиентов";
+  backBtn.onclick = () => {
+    clearAmneziaWGClientView();
+    history.pushState(null, "", "/dashboard");
+    renderAmneziaWGPanel();
+  };
+  headBar.appendChild(backBtn);
+
+  const metaCard = document.createElement("div");
+  metaCard.className = "wg-client-meta";
+
+  const actionsRow = document.createElement("div");
+  actionsRow.className = "wg-toolbar wg-client-actions";
+  const renameLabel = document.createElement("label");
+  renameLabel.className = "wg-add-field";
+  const renameSpan = document.createElement("span");
+  renameSpan.className = "muted";
+  renameSpan.textContent = "Новое имя";
+  const renameInput = document.createElement("input");
+  renameInput.type = "text";
+  renameInput.maxLength = 15;
+  renameInput.autocomplete = "off";
+  renameLabel.append(renameSpan, renameInput);
+  const renameBtn = document.createElement("button");
+  renameBtn.type = "button";
+  renameBtn.textContent = "Переименовать";
+  const dlBtn = document.createElement("button");
+  dlBtn.type = "button";
+  dlBtn.className = "btn-secondary";
+  dlBtn.textContent = "Скачать файл";
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.className = "btn-danger";
+  delBtn.textContent = "Удалить";
+  actionsRow.append(renameLabel, renameBtn, dlBtn, delBtn);
+
+  const dnsTitle = document.createElement("h3");
+  dnsTitle.className = "panel-section-title";
+  dnsTitle.textContent = "DNS по ключевым словам";
+  const dnsHint = document.createElement("p");
+  dnsHint.className = "muted wg-dns-hint";
+  dnsHint.textContent =
+    "Те же ключевые слова, что в разделе «DNS». Показываются запросы AdGuard Home с IP туннеля этого клиента.";
+  const chartsWrap = document.createElement("div");
+  chartsWrap.className = "wg-dns-charts";
+  const dnsToolbar = document.createElement("div");
+  dnsToolbar.className = "wg-toolbar";
+  const dnsRefresh = document.createElement("button");
+  dnsRefresh.type = "button";
+  dnsRefresh.className = "btn-secondary";
+  dnsRefresh.textContent = "Обновить DNS";
+  dnsToolbar.appendChild(dnsRefresh);
+  const qWrap = document.createElement("div");
+  qWrap.className = "wg-table-wrap";
+  const qTable = document.createElement("table");
+  qTable.className = "data-table";
+  const qThead = document.createElement("thead");
+  qThead.innerHTML =
+    "<tr><th>Время</th><th>Домен</th><th>Ключевые слова</th></tr>";
+  const qTbody = document.createElement("tbody");
+  qTable.append(qThead, qTbody);
+
+  panel.append(
+    status,
+    headBar,
+    metaCard,
+    actionsRow,
+    dnsTitle,
+    dnsHint,
+    chartsWrap,
+    dnsToolbar,
+    qWrap,
+  );
+  qWrap.appendChild(qTable);
+  formEl.appendChild(panel);
+
+  if (headActionsEl) {
+    const headRow = document.createElement("div");
+    headRow.className = "feature-head-wg";
+    headRow.appendChild(titleEl);
+    headActionsEl.appendChild(headRow);
+  }
+
+  let currentName = clientName;
+  let dnsQueriesCache = [];
+  const setStatus = bindPanelStatus(status);
+
+  function renderDnsCharts(stats) {
+    chartsWrap.replaceChildren();
+    if (!stats || !stats.total_queries) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent =
+        "Нет совпадений по ключевым словам или лог AdGuard недоступен.";
+      chartsWrap.appendChild(p);
+      return;
+    }
+    const kw = stats.by_keyword || {};
+    const kwEntries = Object.entries(kw).sort((a, b) => b[1] - a[1]);
+    const maxKw = Math.max(...kwEntries.map((x) => x[1]), 1);
+    const kwBlock = document.createElement("div");
+    kwBlock.className = "wg-chart-block";
+    const kwH = document.createElement("h4");
+    kwH.className = "wg-chart-title";
+    kwH.textContent = "Совпадения по словам";
+    const kwBars = document.createElement("div");
+    kwBars.className = "wg-bar-list";
+    for (const [k, v] of kwEntries) {
+      const row = document.createElement("div");
+      row.className = "wg-bar-row";
+      const lab = document.createElement("span");
+      lab.className = "wg-bar-label";
+      lab.textContent = k;
+      const track = document.createElement("div");
+      track.className = "wg-bar-track";
+      const fill = document.createElement("div");
+      fill.className = "wg-bar-fill";
+      fill.style.width = `${(v / maxKw) * 100}%`;
+      const num = document.createElement("span");
+      num.className = "wg-bar-num";
+      num.textContent = String(v);
+      track.appendChild(fill);
+      row.append(lab, track, num);
+      kwBars.appendChild(row);
+    }
+    kwBlock.append(kwH, kwBars);
+
+    const domBlock = document.createElement("div");
+    domBlock.className = "wg-chart-block";
+    const domH = document.createElement("h4");
+    domH.className = "wg-chart-title";
+    domH.textContent = "Частые домены";
+    const topD = stats.top_domains || [];
+    const maxD = Math.max(...topD.map((d) => d.count), 1);
+    const domBars = document.createElement("div");
+    domBars.className = "wg-bar-list";
+    for (const { domain: d, count: v } of topD) {
+      const row = document.createElement("div");
+      row.className = "wg-bar-row";
+      const lab = document.createElement("span");
+      lab.className = "wg-bar-label wg-bar-label-domain";
+      lab.textContent = d;
+      lab.title = d;
+      const track = document.createElement("div");
+      track.className = "wg-bar-track";
+      const fill = document.createElement("div");
+      fill.className = "wg-bar-fill wg-bar-fill-alt";
+      fill.style.width = `${(v / maxD) * 100}%`;
+      const num = document.createElement("span");
+      num.className = "wg-bar-num";
+      num.textContent = String(v);
+      track.appendChild(fill);
+      row.append(lab, track, num);
+      domBars.appendChild(row);
+    }
+    domBlock.append(domH, domBars);
+    chartsWrap.append(kwBlock, domBlock);
+  }
+
+  function renderDnsRows() {
+    qTbody.replaceChildren();
+    const entries = dnsQueriesCache || [];
+    if (!entries.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 3;
+      td.className = "muted";
+      td.textContent = "Нет записей";
+      tr.appendChild(td);
+      qTbody.appendChild(tr);
+      return;
+    }
+    const sorted = [...entries].sort((a, b) => {
+      const ta = wgDetailTimeToMs(a.time);
+      const tb = wgDetailTimeToMs(b.time);
+      const va = ta == null ? Number.NEGATIVE_INFINITY : ta;
+      const vb = tb == null ? Number.NEGATIVE_INFINITY : tb;
+      if (va !== vb) return vb - va;
+      return (a.domain || "").localeCompare(b.domain || "", "ru");
+    });
+    for (const e of sorted) {
+      const tr = document.createElement("tr");
+      const tdT = document.createElement("td");
+      const raw = e.time ?? "";
+      if (raw === "unknown" || !raw) {
+        tdT.textContent = raw || "—";
+      } else {
+        const p = wgDetailTimeToMs(raw);
+        if (p == null) {
+          tdT.textContent = raw;
+        } else {
+          tdT.textContent = formatRelativeTimeRu(p);
+          tdT.title = raw;
+        }
+      }
+      const tdD = document.createElement("td");
+      tdD.textContent = e.domain ?? "";
+      const tdK = document.createElement("td");
+      tdK.textContent = (e.matched_keywords || []).join(", ");
+      tr.append(tdT, tdD, tdK);
+      qTbody.appendChild(tr);
+    }
+  }
+
+  async function loadDns() {
+    setStatus("");
+    const resp = await fetch(
+      `/api/amneziawg/clients/${encodeURIComponent(currentName)}/dns-history`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      setStatus("Не удалось разобрать ответ DNS", true);
+      dnsQueriesCache = [];
+      renderDnsRows();
+      renderDnsCharts(null);
+      return;
+    }
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail || body),
+        true,
+      );
+      dnsQueriesCache = [];
+      renderDnsRows();
+      renderDnsCharts(null);
+      return;
+    }
+    dnsQueriesCache = body.entries || [];
+    renderDnsCharts(body.stats || null);
+    renderDnsRows();
+  }
+
+  async function loadClient() {
+    setStatus("");
+    const resp = await fetch(
+      `/api/amneziawg/clients/${encodeURIComponent(clientName)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      metaCard.innerHTML = "";
+      const err = document.createElement("p");
+      err.className = "wg-status-error";
+      err.textContent = "Не удалось разобрать ответ сервера";
+      metaCard.appendChild(err);
+      return;
+    }
+    if (!resp.ok) {
+      metaCard.replaceChildren();
+      const err = document.createElement("p");
+      err.className = "wg-status-error";
+      err.textContent = typeof body.detail === "string" ? body.detail : "Клиент не найден";
+      metaCard.appendChild(err);
+      return;
+    }
+    const c = body.client || {};
+    currentName = c.name || clientName;
+    renameInput.value = currentName;
+    metaCard.replaceChildren();
+    const grid = document.createElement("dl");
+    grid.className = "wg-meta-dl";
+    const rows = [
+      ["Имя", currentName],
+      ["IPv4", c.ipv4 || "—"],
+      ["IPv6", c.ipv6 || "—"],
+      ["Публичный ключ", c.public_key || "—"],
+      [
+        "Создан",
+        c.created_at
+          ? `${new Date(c.created_at * 1000).toLocaleString()} (${formatRelativeTimeRu(c.created_at)})`
+          : "—",
+      ],
+    ];
+    const visit = formatLastVisit(c);
+    rows.push(["Последний визит", `${visit.main}${visit.sub ? ` · ${visit.sub}` : ""}`]);
+    for (const [dt, dd] of rows) {
+      const dtEl = document.createElement("dt");
+      dtEl.textContent = dt;
+      const ddEl = document.createElement("dd");
+      if (dt === "Публичный ключ") {
+        const code = document.createElement("code");
+        code.className = "wg-pubkey";
+        code.textContent = dd;
+        ddEl.appendChild(code);
+      } else {
+        ddEl.textContent = dd;
+      }
+      grid.append(dtEl, ddEl);
+    }
+    metaCard.appendChild(grid);
+  }
+
+  renameBtn.onclick = async () => {
+    const trimmed = String(renameInput.value || "").trim();
+    if (!trimmed || trimmed === currentName) {
+      setStatus("Введите другое имя", true);
+      return;
+    }
+    setStatus("");
+    const resp = await fetch("/api/amneziawg/clients/rename", {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ old_name: currentName, new_name: trimmed }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    setAmneziaWGClientView(trimmed);
+    history.replaceState(null, "", "/dashboard");
+    renderAmneziaWGPanel();
+  };
+
+  dlBtn.onclick = async () => {
+    await downloadAwgConfigFile(currentName, (msg) => setStatus(msg, true));
+  };
+
+  delBtn.onclick = async () => {
+    if (!confirm(`Удалить клиента «${currentName}»?`)) return;
+    setStatus("");
+    const resp = await fetch(
+      `/api/amneziawg/clients/${encodeURIComponent(currentName)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    );
+    const body = await resp.json();
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    clearAmneziaWGClientView();
+    history.pushState(null, "", "/dashboard");
+    renderAmneziaWGPanel();
+  };
+
+  dnsRefresh.onclick = () => withButtonLoading(dnsRefresh, loadDns);
+  loadClient();
+  loadDns();
 }
 
 function renderWireGuardClientDetail(clientName) {
@@ -2572,6 +2975,11 @@ features.forEach((feature) => {
       history.replaceState(null, "", "/dashboard");
       if (location.hash) location.hash = "";
     }
+    if (feature.key === "amneziawg") {
+      clearAmneziaWGClientView();
+      history.replaceState(null, "", "/dashboard");
+      if (location.hash) location.hash = "";
+    }
     renderFeature(feature);
   };
   li.appendChild(btn);
@@ -2628,4 +3036,18 @@ document.body.addEventListener("click", (e) => {
   localStorage.setItem("activeFeatureKey", "wireguard");
   setActiveFeatureKey("wireguard");
   renderWireGuardPanel();
+});
+
+document.body.addEventListener("click", (e) => {
+  const a = e.target.closest("a.awg-client-open-link[data-awg-client]");
+  if (!a) return;
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  const name = a.dataset.awgClient;
+  if (!name) return;
+  e.preventDefault();
+  setAmneziaWGClientView(name);
+  history.replaceState(null, "", "/dashboard");
+  localStorage.setItem("activeFeatureKey", "amneziawg");
+  setActiveFeatureKey("amneziawg");
+  renderAmneziaWGPanel();
 });
