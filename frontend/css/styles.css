@@ -319,7 +319,7 @@ li button {
 }
 
 /* Имя клиента — ссылка на карточку */
-a.wg-client-open-link {
+a.wg-client-open-link, a.awg-client-open-link {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.88em;
   font-weight: 600;
@@ -328,11 +328,11 @@ a.wg-client-open-link {
   text-underline-offset: 0.15em;
 }
 
-a.wg-client-open-link:hover {
+a.wg-client-open-link:hover, a.awg-client-open-link:hover {
   text-decoration: underline;
 }
 
-a.wg-client-open-link:active {
+a.wg-client-open-link:active, a.awg-client-open-link:active {
   opacity: 0.85;
 }
 
