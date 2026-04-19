@@ -49,6 +49,21 @@ class Storage:
                 """
             )
             cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS amneziawg_clients (
+                    name TEXT PRIMARY KEY,
+                    ipv4 TEXT NOT NULL,
+                    ipv6 TEXT NOT NULL,
+                    public_key TEXT NOT NULL,
+                    private_key TEXT NOT NULL,
+                    preshared_key TEXT NOT NULL,
+                    config_file TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            cur.execute(
                 "CREATE TABLE IF NOT EXISTS dns_keywords (keyword TEXT PRIMARY KEY)"
             )
             cur.execute(

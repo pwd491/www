@@ -3,6 +3,8 @@ from fastapi.responses import FileResponse
 
 from ..auth.dependencies import get_current_user
 from ..models.features import (
+    AwgAddRequest,
+    AwgRenameRequest,
     BackupAddPathRequest,
     BackupPathsBulkRequest,
     BackupSettingsRequest,
@@ -16,6 +18,7 @@ from ..models.features import (
 )
 from ..services.backup import backup
 from ..services.dns import dns
+from ..services.amneziawg import amneziawg
 from ..services.wireguard import wireguard
 from ..services.zapret import zapret
 
@@ -27,9 +30,19 @@ def wg_stats(include_ip: bool = False) -> dict:
     return {"stats": wireguard.get_stats(include_ip)}
 
 
+@router.get("/amneziawg/stats")
+def awg_stats(include_ip: bool = False) -> dict:
+    return {"stats": amneziawg.get_stats(include_ip)}
+
+
 @router.post("/wireguard/clients")
 def wg_add(payload: WgAddRequest, user: str = Depends(get_current_user)) -> dict:
     return wireguard.add_client(payload.client_name, user)
+
+
+@router.post("/amneziawg/clients")
+def awg_add(payload: AwgAddRequest, user: str = Depends(get_current_user)) -> dict:
+    return amneziawg.add_client(payload.client_name, user)
 
 
 @router.delete("/wireguard/clients/{client_name}")
@@ -38,14 +51,30 @@ def wg_remove(client_name: str) -> dict:
     return {"removed": removed}
 
 
+@router.delete("/amneziawg/clients/{client_name}")
+def awg_remove(client_name: str) -> dict:
+    removed = amneziawg.remove_client(client_name)
+    return {"removed": removed}
+
+
 @router.patch("/wireguard/clients/rename")
 def wg_rename(payload: WgRenameRequest) -> dict:
     return wireguard.rename_client(payload.old_name, payload.new_name)
 
 
+@router.patch("/amneziawg/clients/rename")
+def awg_rename(payload: AwgRenameRequest) -> dict:
+    return amneziawg.rename_client(payload.old_name, payload.new_name)
+
+
 @router.get("/wireguard/clients")
 def wg_list() -> dict:
     return {"clients": wireguard.list_clients_with_activity()}
+
+
+@router.get("/amneziawg/clients")
+def awg_list() -> dict:
+    return {"clients": amneziawg.list_clients_with_activity()}
 
 
 @router.get("/wireguard/clients/{client_name}")
@@ -56,9 +85,30 @@ def wg_client_detail(client_name: str) -> dict:
     return {"client": c}
 
 
+@router.get("/amneziawg/clients/{client_name}")
+def awg_client_detail(client_name: str) -> dict:
+    c = amneziawg.get_client_by_name(client_name)
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"client": c}
+
+
 @router.get("/wireguard/clients/{client_name}/dns-history")
 def wg_client_dns_history(client_name: str, limit: int = 2000) -> dict:
     c = wireguard.get_client_by_name(client_name)
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    ipv4 = (c.get("ipv4") or "").strip()
+    if not ipv4:
+        raise HTTPException(status_code=400, detail="Client has no IPv4")
+    entries = dns.find_queries_by_keywords(client_ip=ipv4, limit=limit)
+    stats = dns.build_dns_stats(entries)
+    return {"client_ip": ipv4, "entries": entries, "stats": stats}
+
+
+@router.get("/amneziawg/clients/{client_name}/dns-history")
+def awg_client_dns_history(client_name: str, limit: int = 2000) -> dict:
+    c = amneziawg.get_client_by_name(client_name)
     if not c:
         raise HTTPException(status_code=404, detail="Client not found")
     ipv4 = (c.get("ipv4") or "").strip()
@@ -84,6 +134,14 @@ def wg_params_put(payload: WgParamsPutRequest) -> dict:
 @router.get("/wireguard/clients/{client_name}/config")
 def wg_config(client_name: str) -> dict:
     cfg = wireguard.get_config(client_name)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="Client config not found")
+    return {"client_name": client_name, "config": cfg}
+
+
+@router.get("/amneziawg/clients/{client_name}/config")
+def awg_config(client_name: str) -> dict:
+    cfg = amneziawg.get_config(client_name)
     if cfg is None:
         raise HTTPException(status_code=404, detail="Client config not found")
     return {"client_name": client_name, "config": cfg}

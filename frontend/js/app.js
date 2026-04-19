@@ -2,6 +2,7 @@ const token = localStorage.getItem("token");
 
 const features = [
   { key: "wireguard", title: "WireGuard" },
+  { key: "amneziawg", title: "AmneziaWG" },
   { key: "dns", title: "DNS" },
   { key: "zapret", title: "Zapret" },
   { key: "backups", title: "Backups" },
@@ -337,6 +338,247 @@ async function downloadWgConfigFile(clientName, onErr) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+async function downloadAwgConfigFile(clientName, onErr) {
+  const resp = await fetch(
+    `/api/amneziawg/clients/${encodeURIComponent(clientName)}/config`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  let body;
+  try {
+    body = await resp.json();
+  } catch {
+    onErr("Не удалось разобрать ответ сервера");
+    return;
+  }
+  if (!resp.ok) {
+    onErr(
+      typeof body.detail === "string"
+        ? body.detail
+        : JSON.stringify(body.detail || body),
+    );
+    return;
+  }
+  const cfg = body.config;
+  if (typeof cfg !== "string") {
+    onErr("Неожиданный формат конфига");
+    return;
+  }
+  const blob = new Blob([cfg], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `awg-${clientName}.conf`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function renderAmneziaWGPanel() {
+  cleanupWgLayoutMql();
+  cleanupBackupPanelTimers();
+  clearHeadActions();
+  clearFeatureTitleMobileHide();
+  titleEl.textContent = "Клиенты AmneziaWG";
+  formEl.innerHTML = "";
+  outputEl.textContent = "";
+
+  const panel = document.createElement("div");
+  panel.className = "wg-panel";
+  const status = document.createElement("p");
+  status.className = "wg-status muted";
+  const setStatus = bindPanelStatus(status);
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "wg-toolbar";
+  const addLabel = document.createElement("label");
+  addLabel.className = "wg-add-field";
+  const addSpan = document.createElement("span");
+  addSpan.className = "muted";
+  addSpan.textContent = "Новый клиент";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.maxLength = 15;
+  nameInput.placeholder = "имя (латиница, цифры, _-)";
+  nameInput.autocomplete = "off";
+  addLabel.append(addSpan, nameInput);
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.textContent = "Добавить";
+  const refreshBtn = document.createElement("button");
+  refreshBtn.type = "button";
+  refreshBtn.className = "btn-secondary";
+  refreshBtn.textContent = "Обновить";
+  toolbar.append(addLabel, addBtn, refreshBtn);
+
+  const wrap = document.createElement("div");
+  wrap.className = "wg-table-wrap";
+  const table = document.createElement("table");
+  table.className = "data-table";
+  const thead = document.createElement("thead");
+  thead.innerHTML =
+    "<tr><th>Клиент</th><th>IP</th><th>Последний визит</th><th>Действия</th></tr>";
+  const tbody = document.createElement("tbody");
+  table.append(thead, tbody);
+  wrap.appendChild(table);
+  panel.append(status, toolbar, wrap);
+  formEl.appendChild(panel);
+
+  let clientsCache = [];
+
+  function renderRows() {
+    tbody.replaceChildren();
+    if (!clientsCache.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 4;
+      td.className = "muted";
+      td.textContent = "Клиентов пока нет";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+    const sorted = [...clientsCache].sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    for (const c of sorted) {
+      const tr = document.createElement("tr");
+      const tdName = document.createElement("td");
+      tdName.textContent = c.name;
+      const tdIp = document.createElement("td");
+      tdIp.textContent = c.ipv4 || "—";
+      const tdVisit = document.createElement("td");
+      const visit = formatLastVisit(c);
+      tdVisit.textContent = `${visit.main}${visit.sub ? ` · ${visit.sub}` : ""}`;
+      const tdAct = document.createElement("td");
+      tdAct.className = "wg-actions";
+      const rename = document.createElement("button");
+      rename.type = "button";
+      rename.className = "btn-secondary";
+      rename.textContent = "Переим.";
+      rename.onclick = async () => {
+        const next = prompt("Новое имя клиента", c.name);
+        const newName = String(next || "").trim();
+        if (!newName || newName === c.name) return;
+        setStatus("");
+        const resp = await fetch("/api/amneziawg/clients/rename", {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ old_name: c.name, new_name: newName }),
+        });
+        const body = await resp.json();
+        if (!resp.ok) {
+          setStatus(
+            typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+            true,
+          );
+          return;
+        }
+        await loadClients();
+      };
+      const download = document.createElement("button");
+      download.type = "button";
+      download.className = "btn-secondary";
+      download.textContent = "Скачать";
+      download.onclick = async () => {
+        await downloadAwgConfigFile(c.name, (msg) => setStatus(msg, true));
+      };
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn-danger";
+      del.textContent = "Удалить";
+      del.onclick = async () => {
+        if (!confirm(`Удалить клиента «${c.name}»?`)) return;
+        setStatus("");
+        const resp = await fetch(
+          `/api/amneziawg/clients/${encodeURIComponent(c.name)}`,
+          { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+        );
+        const body = await resp.json();
+        if (!resp.ok) {
+          setStatus(
+            typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+            true,
+          );
+          return;
+        }
+        await loadClients();
+      };
+      tdAct.append(rename, download, del);
+      tr.append(tdName, tdIp, tdVisit, tdAct);
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function loadClients() {
+    setStatus("");
+    const resp = await fetch("/api/amneziawg/clients", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let body;
+    try {
+      body = await resp.json();
+    } catch {
+      setStatus("Не удалось разобрать ответ сервера", true);
+      clientsCache = [];
+      renderRows();
+      return;
+    }
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail || body),
+        true,
+      );
+      clientsCache = [];
+      renderRows();
+      return;
+    }
+    clientsCache = body.clients || [];
+    renderRows();
+  }
+
+  async function addClient() {
+    const name = String(nameInput.value || "").trim();
+    if (!name) {
+      setStatus("Введите имя клиента", true);
+      return;
+    }
+    setStatus("");
+    const resp = await fetch("/api/amneziawg/clients", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ client_name: name }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      setStatus(
+        typeof body.detail === "string" ? body.detail : JSON.stringify(body),
+        true,
+      );
+      return;
+    }
+    nameInput.value = "";
+    outputEl.textContent = JSON.stringify(body, null, 2);
+    await loadClients();
+  }
+
+  addBtn.onclick = () => addClient();
+  refreshBtn.onclick = () => withButtonLoading(refreshBtn, loadClients);
+  formEl.onsubmit = async (e) => {
+    e.preventDefault();
+    await addClient();
+  };
+
+  loadClients();
 }
 
 function renderWireGuardClientDetail(clientName) {
@@ -2205,6 +2447,10 @@ function renderBackupsPanel() {
 function renderFeature(feature) {
   if (feature.key === "wireguard") {
     renderWireGuardPanel();
+    return;
+  }
+  if (feature.key === "amneziawg") {
+    renderAmneziaWGPanel();
     return;
   }
   if (feature.key === "zapret") {

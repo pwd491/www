@@ -11,6 +11,7 @@ from .api.features import router as features_router
 from .core.config import settings
 from .services.backup import backup
 from .services.dns import dns
+from .services.amneziawg import amneziawg
 from .services.wireguard import wireguard
 
 
@@ -18,6 +19,7 @@ from .services.wireguard import wireguard
 async def lifespan(_app: FastAPI):
     dns.sync_adguard_clients_from_home()
     wireguard.import_clients_from_disk()
+    amneziawg.import_clients_from_disk()
     backup.start_scheduler()
     yield
 

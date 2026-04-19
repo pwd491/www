@@ -7,7 +7,16 @@ class WgAddRequest(BaseModel):
     client_name: str = Field(min_length=1, max_length=15)
 
 
+class AwgAddRequest(BaseModel):
+    client_name: str = Field(min_length=1, max_length=15)
+
+
 class WgRenameRequest(BaseModel):
+    old_name: str = Field(min_length=1, max_length=15)
+    new_name: str = Field(min_length=1, max_length=15)
+
+
+class AwgRenameRequest(BaseModel):
     old_name: str = Field(min_length=1, max_length=15)
     new_name: str = Field(min_length=1, max_length=15)
 
