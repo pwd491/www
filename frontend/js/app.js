@@ -380,20 +380,62 @@ async function downloadAwgConfigFile(clientName, onErr) {
 function renderAmneziaWGPanel() {
   cleanupWgLayoutMql();
   cleanupBackupPanelTimers();
-  clearHeadActions();
-  clearFeatureTitleMobileHide();
-  titleEl.textContent = "Клиенты AmneziaWG";
   formEl.innerHTML = "";
   outputEl.textContent = "";
+  clearHeadActions();
+  titleEl.textContent = "Клиенты AmneziaWG";
+  titleEl.classList.add("feature-title-hide-mobile");
 
   const panel = document.createElement("div");
   panel.className = "wg-panel";
+
   const status = document.createElement("p");
   status.className = "wg-status muted";
-  const setStatus = bindPanelStatus(status);
+
+  const wrap = document.createElement("div");
+  wrap.className = "wg-table-wrap";
+  const table = document.createElement("table");
+  table.className = "data-table";
+  const thead = document.createElement("thead");
+  const tbody = document.createElement("tbody");
+  table.append(thead, tbody);
+  thead.innerHTML =
+    "<tr><th>Клиент</th><th>IP</th><th>Последний визит</th></tr>";
 
   const toolbar = document.createElement("div");
   toolbar.className = "wg-toolbar";
+
+  const sortSelect = document.createElement("select");
+  sortSelect.setAttribute("aria-label", "Сортировка клиентов AmneziaWG");
+  const optName = document.createElement("option");
+  optName.value = "name";
+  optName.textContent = "По имени (А–Я)";
+  const optVisit = document.createElement("option");
+  optVisit.value = "visit";
+  optVisit.textContent = "По последнему визиту";
+  optVisit.selected = true;
+  sortSelect.append(optName, optVisit);
+
+  const sortHeadLabel = document.createElement("span");
+  sortHeadLabel.className = "muted wg-sort-head-label";
+
+  const refreshBtn = document.createElement("button");
+  refreshBtn.type = "button";
+  refreshBtn.className = "btn-secondary";
+  refreshBtn.textContent = "Обновить";
+
+  if (headActionsEl) {
+    const headRow = document.createElement("div");
+    headRow.className = "feature-head-wg";
+    headRow.append(titleEl, sortHeadLabel, sortSelect, refreshBtn);
+    headActionsEl.appendChild(headRow);
+  } else {
+    const headRow = document.createElement("div");
+    headRow.className = "feature-head-wg";
+    headRow.append(titleEl, sortHeadLabel, sortSelect, refreshBtn);
+    toolbar.prepend(headRow);
+  }
+
   const addLabel = document.createElement("label");
   addLabel.className = "wg-add-field";
   const addSpan = document.createElement("span");
@@ -408,110 +450,87 @@ function renderAmneziaWGPanel() {
   const addBtn = document.createElement("button");
   addBtn.type = "button";
   addBtn.textContent = "Добавить";
-  const refreshBtn = document.createElement("button");
-  refreshBtn.type = "button";
-  refreshBtn.className = "btn-secondary";
-  refreshBtn.textContent = "Обновить";
-  toolbar.append(addLabel, addBtn, refreshBtn);
+  toolbar.append(addLabel, addBtn);
 
-  const wrap = document.createElement("div");
-  wrap.className = "wg-table-wrap";
-  const table = document.createElement("table");
-  table.className = "data-table";
-  const thead = document.createElement("thead");
-  thead.innerHTML =
-    "<tr><th>Клиент</th><th>IP</th><th>Последний визит</th><th>Действия</th></tr>";
-  const tbody = document.createElement("tbody");
-  table.append(thead, tbody);
+  panel.append(status, wrap, toolbar);
   wrap.appendChild(table);
-  panel.append(status, toolbar, wrap);
   formEl.appendChild(panel);
 
   let clientsCache = [];
 
-  function renderRows() {
+  function sortAmneziaWGClients(list, mode) {
+    const copy = [...list];
+    if (mode === "visit") {
+      copy.sort((a, b) => {
+        const ha =
+          typeof a.last_handshake === "number" && a.last_handshake > 0
+            ? a.last_handshake
+            : 0;
+        const hb =
+          typeof b.last_handshake === "number" && b.last_handshake > 0
+            ? b.last_handshake
+            : 0;
+        if (ha !== hb) return hb - ha;
+        return a.name.localeCompare(b.name, "ru");
+      });
+    } else {
+      copy.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    }
+    return copy;
+  }
+
+  function setStatus(text, isError) {
+    if (!text) {
+      status.textContent = "";
+      status.hidden = true;
+      return;
+    }
+    status.hidden = false;
+    status.textContent = text;
+    status.classList.toggle("wg-status-error", Boolean(isError));
+  }
+
+  function rowForClient(c) {
+    const tr = document.createElement("tr");
+    const tdName = document.createElement("td");
+    tdName.textContent = c.name;
+    const tdIp = document.createElement("td");
+    const ipCode = document.createElement("code");
+    ipCode.className = "muted";
+    ipCode.textContent = c.ipv4 || "";
+    tdIp.appendChild(ipCode);
+    const tdVisit = document.createElement("td");
+    const visit = formatLastVisit(c);
+    const main = document.createElement("div");
+    main.textContent = visit.main;
+    if (visit.titleMain) main.title = visit.titleMain;
+    tdVisit.appendChild(main);
+    if (visit.sub) {
+      const sub = document.createElement("div");
+      sub.className = "muted wg-sub";
+      sub.textContent = visit.sub;
+      if (visit.titleSub) sub.title = visit.titleSub;
+      tdVisit.appendChild(sub);
+    }
+    tr.append(tdName, tdIp, tdVisit);
+    return tr;
+  }
+
+  function renderClientRows() {
     tbody.replaceChildren();
+    const colspan = 3;
     if (!clientsCache.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 4;
+      td.colSpan = colspan;
       td.className = "muted";
       td.textContent = "Клиентов пока нет";
       tr.appendChild(td);
       tbody.appendChild(tr);
       return;
     }
-    const sorted = [...clientsCache].sort((a, b) => a.name.localeCompare(b.name, "ru"));
-    for (const c of sorted) {
-      const tr = document.createElement("tr");
-      const tdName = document.createElement("td");
-      tdName.textContent = c.name;
-      const tdIp = document.createElement("td");
-      tdIp.textContent = c.ipv4 || "—";
-      const tdVisit = document.createElement("td");
-      const visit = formatLastVisit(c);
-      tdVisit.textContent = `${visit.main}${visit.sub ? ` · ${visit.sub}` : ""}`;
-      const tdAct = document.createElement("td");
-      tdAct.className = "wg-actions";
-      const rename = document.createElement("button");
-      rename.type = "button";
-      rename.className = "btn-secondary";
-      rename.textContent = "Переим.";
-      rename.onclick = async () => {
-        const next = prompt("Новое имя клиента", c.name);
-        const newName = String(next || "").trim();
-        if (!newName || newName === c.name) return;
-        setStatus("");
-        const resp = await fetch("/api/amneziawg/clients/rename", {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ old_name: c.name, new_name: newName }),
-        });
-        const body = await resp.json();
-        if (!resp.ok) {
-          setStatus(
-            typeof body.detail === "string" ? body.detail : JSON.stringify(body),
-            true,
-          );
-          return;
-        }
-        await loadClients();
-      };
-      const download = document.createElement("button");
-      download.type = "button";
-      download.className = "btn-secondary";
-      download.textContent = "Скачать";
-      download.onclick = async () => {
-        await downloadAwgConfigFile(c.name, (msg) => setStatus(msg, true));
-      };
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "btn-danger";
-      del.textContent = "Удалить";
-      del.onclick = async () => {
-        if (!confirm(`Удалить клиента «${c.name}»?`)) return;
-        setStatus("");
-        const resp = await fetch(
-          `/api/amneziawg/clients/${encodeURIComponent(c.name)}`,
-          { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
-        );
-        const body = await resp.json();
-        if (!resp.ok) {
-          setStatus(
-            typeof body.detail === "string" ? body.detail : JSON.stringify(body),
-            true,
-          );
-          return;
-        }
-        await loadClients();
-      };
-      tdAct.append(rename, download, del);
-      tr.append(tdName, tdIp, tdVisit, tdAct);
-      tbody.appendChild(tr);
-    }
+    const sorted = sortAmneziaWGClients(clientsCache, sortSelect.value);
+    for (const c of sorted) tbody.appendChild(rowForClient(c));
   }
 
   async function loadClients() {
@@ -525,7 +544,7 @@ function renderAmneziaWGPanel() {
     } catch {
       setStatus("Не удалось разобрать ответ сервера", true);
       clientsCache = [];
-      renderRows();
+      renderClientRows();
       return;
     }
     if (!resp.ok) {
@@ -536,11 +555,11 @@ function renderAmneziaWGPanel() {
         true,
       );
       clientsCache = [];
-      renderRows();
+      renderClientRows();
       return;
     }
     clientsCache = body.clients || [];
-    renderRows();
+    renderClientRows();
   }
 
   async function addClient() {
@@ -571,6 +590,7 @@ function renderAmneziaWGPanel() {
     await loadClients();
   }
 
+  sortSelect.addEventListener("change", () => renderClientRows());
   addBtn.onclick = () => addClient();
   refreshBtn.onclick = () => withButtonLoading(refreshBtn, loadClients);
   formEl.onsubmit = async (e) => {
