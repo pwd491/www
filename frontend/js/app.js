@@ -2943,7 +2943,69 @@ function renderFeature(feature) {
   };
 }
 
+const HIDDEN_FEATURES_STORAGE_KEY = "dashboardHiddenFeatureKeys";
+
+function parseHiddenFeatureKeys() {
+  try {
+    const raw = localStorage.getItem(HIDDEN_FEATURES_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set();
+    const valid = new Set(features.map((f) => f.key));
+    return new Set(
+      arr.filter((k) => typeof k === "string" && valid.has(k)),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function storeHiddenFeatureKeys(set) {
+  const valid = new Set(features.map((f) => f.key));
+  const keys = [...set].filter((k) => valid.has(k));
+  localStorage.setItem(HIDDEN_FEATURES_STORAGE_KEY, JSON.stringify(keys));
+}
+
+function getVisibleFeaturesOrdered() {
+  const hidden = parseHiddenFeatureKeys();
+  return features.filter((f) => !hidden.has(f.key));
+}
+
+function applyFeatureTabVisibility() {
+  let hidden = parseHiddenFeatureKeys();
+  if (hidden.size >= features.length) {
+    hidden = new Set();
+    storeHiddenFeatureKeys(hidden);
+  }
+  features.forEach((f) => {
+    const li = featureListItemByKey[f.key];
+    if (li) li.hidden = hidden.has(f.key);
+  });
+}
+
+/** Ссылка на клиента WG/AWG: показать вкладку, если она была скрыта. */
+function ensureFeatureTabAccessible(key) {
+  if (!featureButtonByKey[key]) return;
+  const hidden = parseHiddenFeatureKeys();
+  if (!hidden.has(key)) return;
+  hidden.delete(key);
+  storeHiddenFeatureKeys(hidden);
+  applyFeatureTabVisibility();
+}
+
+function resolveStartupFeature() {
+  const lastKey = localStorage.getItem("activeFeatureKey");
+  const hidden = parseHiddenFeatureKeys();
+  let selected = (lastKey && features.find((f) => f.key === lastKey)) || null;
+  if (!selected || hidden.has(selected.key)) {
+    const visible = getVisibleFeaturesOrdered();
+    selected = visible[0] || features[0];
+  }
+  return selected;
+}
+
 const featureButtonByKey = {};
+const featureListItemByKey = {};
 
 function setActiveFeatureKey(key) {
   Object.entries(featureButtonByKey).forEach(([k, btn]) => {
@@ -2952,6 +3014,22 @@ function setActiveFeatureKey(key) {
     btn.setAttribute("aria-selected", active ? "true" : "false");
     btn.tabIndex = active ? 0 : -1;
   });
+}
+
+function activateFeatureTab(feature) {
+  localStorage.setItem("activeFeatureKey", feature.key);
+  setActiveFeatureKey(feature.key);
+  if (feature.key === "wireguard") {
+    clearWireGuardClientView();
+    history.replaceState(null, "", "/dashboard");
+    if (location.hash) location.hash = "";
+  }
+  if (feature.key === "amneziawg") {
+    clearAmneziaWGClientView();
+    history.replaceState(null, "", "/dashboard");
+    if (location.hash) location.hash = "";
+  }
+  renderFeature(feature);
 }
 
 listEl.setAttribute("role", "tablist");
@@ -2967,28 +3045,96 @@ features.forEach((feature) => {
   btn.setAttribute("aria-selected", "false");
   btn.tabIndex = -1;
   btn.textContent = feature.title;
-  btn.onclick = () => {
-    localStorage.setItem("activeFeatureKey", feature.key);
-    setActiveFeatureKey(feature.key);
-    if (feature.key === "wireguard") {
-      clearWireGuardClientView();
-      history.replaceState(null, "", "/dashboard");
-      if (location.hash) location.hash = "";
-    }
-    if (feature.key === "amneziawg") {
-      clearAmneziaWGClientView();
-      history.replaceState(null, "", "/dashboard");
-      if (location.hash) location.hash = "";
-    }
-    renderFeature(feature);
-  };
+  btn.onclick = () => activateFeatureTab(feature);
   li.appendChild(btn);
   listEl.appendChild(li);
   featureButtonByKey[feature.key] = btn;
+  featureListItemByKey[feature.key] = li;
 });
 
+applyFeatureTabVisibility();
+
+function initFeatureSettingsDialog() {
+  const trigger = document.getElementById("feature-settings-btn");
+  if (!trigger || !listEl) return;
+  const dlg = document.createElement("dialog");
+  dlg.className = "feature-settings-dialog";
+  dlg.setAttribute("aria-labelledby", "feature-settings-dialog-title");
+
+  const title = document.createElement("h3");
+  title.id = "feature-settings-dialog-title";
+  title.textContent = "Видимость вкладок";
+
+  const hint = document.createElement("p");
+  hint.className = "muted feature-settings-hint";
+  hint.textContent =
+    "Снимите галочку, чтобы скрыть раздел в списке «Функции» (например WireGuard или DNS).";
+
+  const boxList = document.createElement("div");
+  boxList.className = "feature-settings-checks";
+
+  const actions = document.createElement("div");
+  actions.className = "feature-settings-actions";
+  const btnCancel = document.createElement("button");
+  btnCancel.type = "button";
+  btnCancel.className = "btn-secondary";
+  btnCancel.textContent = "Отмена";
+  const btnSave = document.createElement("button");
+  btnSave.type = "button";
+  btnSave.className = "feature-settings-save";
+  btnSave.textContent = "Сохранить";
+
+  actions.append(btnCancel, btnSave);
+  dlg.append(title, hint, boxList, actions);
+  document.body.appendChild(dlg);
+
+  function openDialog() {
+    boxList.replaceChildren();
+    const hidden = parseHiddenFeatureKeys();
+    features.forEach((f) => {
+      const row = document.createElement("label");
+      row.className = "feature-settings-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.dataset.featureKey = f.key;
+      cb.checked = !hidden.has(f.key);
+      const span = document.createElement("span");
+      span.textContent = f.title;
+      row.append(cb, span);
+      boxList.appendChild(row);
+    });
+    dlg.showModal();
+  }
+
+  trigger.addEventListener("click", () => openDialog());
+
+  btnCancel.addEventListener("click", () => dlg.close());
+
+  btnSave.addEventListener("click", () => {
+    const nextHidden = new Set();
+    boxList.querySelectorAll("input[type=checkbox][data-feature-key]").forEach((cb) => {
+      const k = cb.dataset.featureKey;
+      if (k && !cb.checked) nextHidden.add(k);
+    });
+    if (nextHidden.size >= features.length) {
+      window.alert("Нужно оставить видимой хотя бы одну вкладку.");
+      return;
+    }
+    storeHiddenFeatureKeys(nextHidden);
+    applyFeatureTabVisibility();
+    const cur = localStorage.getItem("activeFeatureKey");
+    if (cur && nextHidden.has(cur)) {
+      const first = getVisibleFeaturesOrdered()[0];
+      if (first) activateFeatureTab(first);
+    }
+    dlg.close();
+  });
+}
+
+initFeatureSettingsDialog();
+
 listEl.addEventListener("keydown", (e) => {
-  const order = features.map((f) => f.key);
+  const order = getVisibleFeaturesOrdered().map((f) => f.key);
   const tabs = order.map((k) => featureButtonByKey[k]).filter(Boolean);
   const i = tabs.indexOf(document.activeElement);
   if (i < 0) return;
@@ -3015,9 +3161,7 @@ listEl.addEventListener("keydown", (e) => {
 
 migrateLegacyWireguardHash();
 
-const lastKey = localStorage.getItem("activeFeatureKey");
-const selected =
-  (lastKey && features.find((f) => f.key === lastKey)) || features[0];
+const selected = resolveStartupFeature();
 if (selected) {
   localStorage.setItem("activeFeatureKey", selected.key);
   setActiveFeatureKey(selected.key);
@@ -3031,6 +3175,7 @@ document.body.addEventListener("click", (e) => {
   const name = a.dataset.wgClient;
   if (!name) return;
   e.preventDefault();
+  ensureFeatureTabAccessible("wireguard");
   setWireGuardClientView(name);
   history.replaceState(null, "", "/dashboard");
   localStorage.setItem("activeFeatureKey", "wireguard");
@@ -3045,6 +3190,7 @@ document.body.addEventListener("click", (e) => {
   const name = a.dataset.awgClient;
   if (!name) return;
   e.preventDefault();
+  ensureFeatureTabAccessible("amneziawg");
   setAmneziaWGClientView(name);
   history.replaceState(null, "", "/dashboard");
   localStorage.setItem("activeFeatureKey", "amneziawg");

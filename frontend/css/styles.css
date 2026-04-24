@@ -69,6 +69,94 @@ body {
   padding: 1rem;
 }
 
+.feature-aside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
+}
+
+.feature-aside-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.feature-settings-btn {
+  flex-shrink: 0;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.82rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.feature-settings-dialog {
+  max-width: min(100vw - 2rem, 22rem);
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+}
+
+.feature-settings-dialog::backdrop {
+  background: color-mix(in srgb, var(--bg) 55%, #000);
+}
+
+.feature-settings-dialog h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.feature-settings-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.feature-settings-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.feature-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.feature-settings-row input {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.feature-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.feature-settings-actions button {
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.feature-settings-actions .feature-settings-save {
+  background: color-mix(in srgb, var(--card) 88%, var(--accent) 12%);
+  border: 1px solid var(--accent);
+  color: var(--text);
+}
+
 .feature-panel-head {
   display: flex;
   align-items: center;
