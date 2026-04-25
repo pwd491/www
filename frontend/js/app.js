@@ -350,7 +350,7 @@ async function downloadWgConfigFile(clientName, onErr) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `wg-${clientName}.conf`;
+  a.download = `wg0-client-${clientName}.conf`;
   a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
