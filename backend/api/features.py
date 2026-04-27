@@ -94,16 +94,27 @@ def awg_client_detail(client_name: str) -> dict:
 
 
 @router.get("/wireguard/clients/{client_name}/dns-history")
-def wg_client_dns_history(client_name: str, limit: int = 2000) -> dict:
+def wg_client_dns_history(
+    client_name: str,
+    mode: str = "keywords",
+    limit: int | None = None,
+    offset: int = 0,
+) -> dict:
     c = wireguard.get_client_by_name(client_name)
     if not c:
         raise HTTPException(status_code=404, detail="Client not found")
     ipv4 = (c.get("ipv4") or "").strip()
     if not ipv4:
         raise HTTPException(status_code=400, detail="Client has no IPv4")
-    entries = dns.find_queries_by_keywords(client_ip=ipv4, limit=limit)
-    stats = dns.build_dns_stats(entries)
-    return {"client_ip": ipv4, "entries": entries, "stats": stats}
+    mode_norm = (mode or "keywords").strip().lower()
+    entries = dns.find_queries(
+        mode=mode_norm,
+        client_ip=ipv4,
+        limit=limit,
+        offset=offset,
+    )
+    stats = dns.build_dns_stats(entries) if mode_norm == "keywords" else None
+    return {"client_ip": ipv4, "mode": mode_norm, "entries": entries, "stats": stats}
 
 
 @router.get("/amneziawg/clients/{client_name}/dns-history")

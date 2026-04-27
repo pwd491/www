@@ -320,6 +320,14 @@ function wgDetailTimeToMs(raw) {
   return Number.isNaN(p) ? null : p;
 }
 
+function formatWgDnsTimeRu(raw) {
+  const ms = wgDetailTimeToMs(raw);
+  if (ms == null) return raw || "—";
+  const dt = new Date(ms);
+  const pad2 = (n) => String(n).padStart(2, "0");
+  return `${pad2(dt.getDate())}.${pad2(dt.getMonth() + 1)}.${dt.getFullYear()} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`;
+}
+
 /** Скачать конфиг клиента; onErr(message) при ошибке */
 async function downloadWgConfigFile(clientName, onErr) {
   const resp = await fetch(
@@ -1059,7 +1067,7 @@ function renderWireGuardClientDetail(clientName) {
 
   const dnsTitle = document.createElement("h3");
   dnsTitle.className = "panel-section-title";
-  dnsTitle.textContent = "DNS по ключевым словам";
+  dnsTitle.textContent = "DNS история";
   const dnsHint = document.createElement("p");
   dnsHint.className = "muted wg-dns-hint";
   dnsHint.textContent =
@@ -1070,11 +1078,40 @@ function renderWireGuardClientDetail(clientName) {
 
   const dnsToolbar = document.createElement("div");
   dnsToolbar.className = "wg-toolbar";
+  const dnsModes = document.createElement("div");
+  dnsModes.className = "wg-toolbar";
+  const modeLabelAll = document.createElement("label");
+  modeLabelAll.className = "wg-add-field";
+  const modeAll = document.createElement("input");
+  modeAll.type = "radio";
+  modeAll.name = "wg-dns-mode";
+  modeAll.value = "all";
+  modeAll.checked = true;
+  const modeAllText = document.createElement("span");
+  modeAllText.className = "muted";
+  modeAllText.textContent = "Вся история";
+  modeLabelAll.append(modeAll, modeAllText);
+  const modeLabelKeywords = document.createElement("label");
+  modeLabelKeywords.className = "wg-add-field";
+  const modeKeywords = document.createElement("input");
+  modeKeywords.type = "radio";
+  modeKeywords.name = "wg-dns-mode";
+  modeKeywords.value = "keywords";
+  const modeKeywordsText = document.createElement("span");
+  modeKeywordsText.className = "muted";
+  modeKeywordsText.textContent = "По ключевым словам";
+  modeLabelKeywords.append(modeKeywords, modeKeywordsText);
+  dnsModes.append(modeLabelAll, modeLabelKeywords);
   const dnsRefresh = document.createElement("button");
   dnsRefresh.type = "button";
   dnsRefresh.className = "btn-secondary";
   dnsRefresh.textContent = "Обновить DNS";
-  dnsToolbar.appendChild(dnsRefresh);
+  const dnsLoadMore = document.createElement("button");
+  dnsLoadMore.type = "button";
+  dnsLoadMore.className = "btn-secondary";
+  dnsLoadMore.textContent = "Показать ещё 50";
+  dnsLoadMore.hidden = true;
+  dnsToolbar.append(dnsRefresh, dnsLoadMore);
 
   const qWrap = document.createElement("div");
   qWrap.className = "wg-table-wrap";
@@ -1093,6 +1130,7 @@ function renderWireGuardClientDetail(clientName) {
     actionsRow,
     dnsTitle,
     dnsHint,
+    dnsModes,
     chartsWrap,
     dnsToolbar,
     qWrap,
@@ -1109,6 +1147,9 @@ function renderWireGuardClientDetail(clientName) {
 
   let currentName = clientName;
   let dnsQueriesCache = [];
+  let dnsMode = "all";
+  let dnsOffset = 0;
+  let dnsHasMore = false;
 
   function setStatus(text, isError) {
     if (!text) {
@@ -1123,6 +1164,13 @@ function renderWireGuardClientDetail(clientName) {
 
   function renderDnsCharts(stats) {
     chartsWrap.replaceChildren();
+    if (dnsMode !== "keywords") {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "Показана полная DNS история клиента.";
+      chartsWrap.appendChild(p);
+      return;
+    }
     if (!stats || !stats.total_queries) {
       const p = document.createElement("p");
       p.className = "muted";
@@ -1221,17 +1269,8 @@ function renderWireGuardClientDetail(clientName) {
       const tr = document.createElement("tr");
       const tdT = document.createElement("td");
       const raw = e.time ?? "";
-      if (raw === "unknown" || !raw) {
-        tdT.textContent = raw || "—";
-      } else {
-        const p = wgDetailTimeToMs(raw);
-        if (p == null) {
-          tdT.textContent = raw;
-        } else {
-          tdT.textContent = formatRelativeTimeRu(p);
-          tdT.title = raw;
-        }
-      }
+      tdT.textContent = formatWgDnsTimeRu(raw);
+      if (raw) tdT.title = raw;
       const tdD = document.createElement("td");
       tdD.textContent = e.domain ?? "";
       const tdK = document.createElement("td");
@@ -1244,8 +1283,15 @@ function renderWireGuardClientDetail(clientName) {
 
   async function loadDns() {
     setStatus("");
+    const chunkLimit = dnsMode === "all" ? 50 : null;
+    const query = new URLSearchParams();
+    query.set("mode", dnsMode);
+    if (chunkLimit != null) {
+      query.set("limit", String(chunkLimit));
+      query.set("offset", String(dnsOffset));
+    }
     const resp = await fetch(
-      `/api/wireguard/clients/${encodeURIComponent(currentName)}/dns-history`,
+      `/api/wireguard/clients/${encodeURIComponent(currentName)}/dns-history?${query.toString()}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     let body;
@@ -1254,6 +1300,8 @@ function renderWireGuardClientDetail(clientName) {
     } catch {
       setStatus("Не удалось разобрать ответ DNS", true);
       dnsQueriesCache = [];
+      dnsHasMore = false;
+      dnsLoadMore.hidden = true;
       renderDnsRows();
       renderDnsCharts(null);
       return;
@@ -1266,11 +1314,20 @@ function renderWireGuardClientDetail(clientName) {
         true,
       );
       dnsQueriesCache = [];
+      dnsHasMore = false;
+      dnsLoadMore.hidden = true;
       renderDnsRows();
       renderDnsCharts(null);
       return;
     }
-    dnsQueriesCache = body.entries || [];
+    const newEntries = body.entries || [];
+    if (dnsMode === "all" && dnsOffset > 0) {
+      dnsQueriesCache = dnsQueriesCache.concat(newEntries);
+    } else {
+      dnsQueriesCache = newEntries;
+    }
+    dnsHasMore = dnsMode === "all" && newEntries.length === 50;
+    dnsLoadMore.hidden = !dnsHasMore;
     renderDnsCharts(body.stats || null);
     renderDnsRows();
   }
@@ -1393,6 +1450,24 @@ function renderWireGuardClientDetail(clientName) {
   };
 
   dnsRefresh.onclick = () => withButtonLoading(dnsRefresh, loadDns);
+  dnsLoadMore.onclick = () =>
+    withButtonLoading(dnsLoadMore, async () => {
+      if (!dnsHasMore || dnsMode !== "all") return;
+      dnsOffset += 50;
+      await loadDns();
+    });
+  modeAll.addEventListener("change", () => {
+    if (!modeAll.checked) return;
+    dnsMode = "all";
+    dnsOffset = 0;
+    withButtonLoading(dnsRefresh, loadDns);
+  });
+  modeKeywords.addEventListener("change", () => {
+    if (!modeKeywords.checked) return;
+    dnsMode = "keywords";
+    dnsOffset = 0;
+    withButtonLoading(dnsRefresh, loadDns);
+  });
 
   loadClient();
   loadDns();

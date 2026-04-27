@@ -178,6 +178,17 @@ class DnsService:
         return "unknown"
 
     @staticmethod
+    def _timestamp_to_ms(raw: str) -> int | None:
+        s = (raw or "").strip()
+        if not s or s == "unknown":
+            return None
+        iso = s.replace(" ", "T", 1) if " " in s and "T" not in s else s
+        try:
+            return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000)
+        except ValueError:
+            return None
+
+    @staticmethod
     def _normalize_client_ip(raw: str) -> str:
         s = (raw or "").strip()
         if s.startswith("[") and "]" in s:
@@ -214,6 +225,36 @@ class DnsService:
                 "client_ip": client_ip,
                 "client_name": client_name,
                 "matched_keywords": matched_kws,
+            }
+        )
+        return True
+
+    def _append_entry_any_domain(
+        self,
+        row: dict,
+        entries: list[dict],
+        client_names: dict[str, str],
+        client_ip_filter: str | None = None,
+    ) -> bool:
+        domain = self._domain_from_log_row(row)
+        if not domain:
+            return False
+        client_ip = self._client_from_log_row(row)
+        if client_ip_filter is not None:
+            want = self._normalize_client_ip(client_ip_filter)
+            got = self._normalize_client_ip(client_ip)
+            if want != got:
+                return False
+        client_name = client_names.get(client_ip)
+        client_display = client_name or client_ip
+        entries.append(
+            {
+                "time": self._timestamp_from_row(row),
+                "domain": domain,
+                "client": client_display,
+                "client_ip": client_ip,
+                "client_name": client_name,
+                "matched_keywords": [],
             }
         )
         return True
@@ -500,6 +541,85 @@ class DnsService:
                 matched,
             )
         return out
+
+    def find_queries(
+        self,
+        *,
+        mode: str = "keywords",
+        client_ip: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        mode_norm = (mode or "keywords").strip().lower()
+        if mode_norm not in {"all", "keywords"}:
+            raise ValueError("Unsupported DNS history mode")
+        try:
+            off = max(0, int(offset))
+        except (TypeError, ValueError):
+            off = 0
+        lim: int | None
+        if limit is None:
+            lim = None
+        else:
+            try:
+                lim = max(1, int(limit))
+            except (TypeError, ValueError):
+                lim = 50
+
+        if mode_norm == "keywords":
+            all_entries = self.find_queries_by_keywords(
+                limit=None,
+                client_ip=client_ip,
+            )
+        else:
+            paths = self._find_querylog_files()
+            if not paths:
+                return []
+            client_names = self._load_adguard_client_names()
+            if not client_names:
+                self.sync_adguard_clients_from_home()
+                client_names = self._load_adguard_client_names()
+            client_ip_filter = (client_ip or "").strip() or None
+            all_entries: list[dict] = []
+            for path in paths:
+                try:
+                    with path.open("r", encoding="utf-8") as f:
+                        for line in f:
+                            if not line.strip():
+                                continue
+                            try:
+                                parsed = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            if isinstance(parsed, list):
+                                iter_rows = parsed
+                            elif isinstance(parsed, dict) and isinstance(parsed.get("data"), list):
+                                iter_rows = parsed["data"]
+                            elif isinstance(parsed, dict):
+                                iter_rows = (parsed,)
+                            else:
+                                continue
+                            for row in iter_rows:
+                                if isinstance(row, dict):
+                                    self._append_entry_any_domain(
+                                        row=row,
+                                        entries=all_entries,
+                                        client_names=client_names,
+                                        client_ip_filter=client_ip_filter,
+                                    )
+                except OSError:
+                    continue
+
+        all_entries.sort(
+            key=lambda e: (
+                self._timestamp_to_ms(str(e.get("time") or "")) is None,
+                -(self._timestamp_to_ms(str(e.get("time") or "")) or 0),
+                str(e.get("domain") or ""),
+            )
+        )
+        if lim is None:
+            return all_entries[off:]
+        return all_entries[off : off + lim]
 
 
 dns = DnsService()
