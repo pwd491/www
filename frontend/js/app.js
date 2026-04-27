@@ -1078,40 +1078,37 @@ function renderWireGuardClientDetail(clientName) {
 
   const dnsToolbar = document.createElement("div");
   dnsToolbar.className = "wg-toolbar";
-  const dnsModes = document.createElement("div");
-  dnsModes.className = "wg-toolbar";
-  const modeLabelAll = document.createElement("label");
-  modeLabelAll.className = "wg-add-field";
-  const modeAll = document.createElement("input");
-  modeAll.type = "radio";
-  modeAll.name = "wg-dns-mode";
-  modeAll.value = "all";
-  modeAll.checked = true;
-  const modeAllText = document.createElement("span");
-  modeAllText.className = "muted";
-  modeAllText.textContent = "Вся история";
-  modeLabelAll.append(modeAll, modeAllText);
-  const modeLabelKeywords = document.createElement("label");
-  modeLabelKeywords.className = "wg-add-field";
-  const modeKeywords = document.createElement("input");
-  modeKeywords.type = "radio";
-  modeKeywords.name = "wg-dns-mode";
-  modeKeywords.value = "keywords";
-  const modeKeywordsText = document.createElement("span");
-  modeKeywordsText.className = "muted";
-  modeKeywordsText.textContent = "По ключевым словам";
-  modeLabelKeywords.append(modeKeywords, modeKeywordsText);
-  dnsModes.append(modeLabelAll, modeLabelKeywords);
+  const dnsModeLabel = document.createElement("label");
+  dnsModeLabel.className = "wg-add-field";
+  const dnsModeSpan = document.createElement("span");
+  dnsModeSpan.className = "muted";
+  dnsModeSpan.textContent = "Режим истории";
+  const dnsModeSelect = document.createElement("select");
+  dnsModeSelect.setAttribute("aria-label", "Режим DNS истории WireGuard");
+  const modeOptAll = document.createElement("option");
+  modeOptAll.value = "all";
+  modeOptAll.textContent = "Вся история";
+  modeOptAll.selected = true;
+  const modeOptKeywords = document.createElement("option");
+  modeOptKeywords.value = "keywords";
+  modeOptKeywords.textContent = "По ключевым словам";
+  dnsModeSelect.append(modeOptAll, modeOptKeywords);
+  dnsModeLabel.append(dnsModeSpan, dnsModeSelect);
   const dnsRefresh = document.createElement("button");
   dnsRefresh.type = "button";
   dnsRefresh.className = "btn-secondary";
   dnsRefresh.textContent = "Обновить DNS";
+  dnsToolbar.append(dnsModeLabel, dnsRefresh);
+  const dnsLoadMoreWrap = document.createElement("div");
+  dnsLoadMoreWrap.className = "wg-toolbar";
   const dnsLoadMore = document.createElement("button");
   dnsLoadMore.type = "button";
   dnsLoadMore.className = "btn-secondary";
   dnsLoadMore.textContent = "Показать ещё 50";
+  dnsLoadMore.style.width = "100%";
+  dnsLoadMore.style.display = "block";
   dnsLoadMore.hidden = true;
-  dnsToolbar.append(dnsRefresh, dnsLoadMore);
+  dnsLoadMoreWrap.appendChild(dnsLoadMore);
 
   const qWrap = document.createElement("div");
   qWrap.className = "wg-table-wrap";
@@ -1130,10 +1127,10 @@ function renderWireGuardClientDetail(clientName) {
     actionsRow,
     dnsTitle,
     dnsHint,
-    dnsModes,
     chartsWrap,
     dnsToolbar,
     qWrap,
+    dnsLoadMoreWrap,
   );
   qWrap.appendChild(qTable);
   formEl.appendChild(panel);
@@ -1456,15 +1453,8 @@ function renderWireGuardClientDetail(clientName) {
       dnsOffset += 50;
       await loadDns();
     });
-  modeAll.addEventListener("change", () => {
-    if (!modeAll.checked) return;
-    dnsMode = "all";
-    dnsOffset = 0;
-    withButtonLoading(dnsRefresh, loadDns);
-  });
-  modeKeywords.addEventListener("change", () => {
-    if (!modeKeywords.checked) return;
-    dnsMode = "keywords";
+  dnsModeSelect.addEventListener("change", () => {
+    dnsMode = dnsModeSelect.value === "keywords" ? "keywords" : "all";
     dnsOffset = 0;
     withButtonLoading(dnsRefresh, loadDns);
   });
